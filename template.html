@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Thread Mill Offset Calculator</title>
+    <style>
+        body { font-family: monospace; max-width: 1800px; margin: 20px auto; background: #eee; }
+        .container { background: white; padding: 20px; border: 1px solid #ccc; margin-bottom: 20px; }
+        h1 { font-size: 1.5em; border-bottom: 1px solid #000; padding-bottom: 5px; }
+        h2 { font-size: 1.2em; margin-bottom: 10px; }
+        .page-title { margin: 0 0 4px 0; font-size: 2em; border-bottom: none; padding-bottom: 0; }
+        .page-subtitle { margin: 0 0 18px 0; color: #555; font-size: 1em; }
+        .section-heading { margin: 16px 0 8px 0; font-size: 1.1em; font-weight: bold; }
+        label { display: inline-block; width: 220px; margin-bottom: 5px; }
+        input[type="number"] { width: 120px; margin-bottom: 5px; }
+        input[type="range"] { width: 240px; vertical-align: middle; }
+        select { margin-bottom: 5px; min-width: 180px; max-width: 420px;}
+        button { padding: 5px 15px; margin-top: 10px; cursor: pointer; }
+        .result-box { box-sizing: border-box; min-width: 960px; margin-top: 20px; padding: 10px; background: #f9f9f9; border: 1px solid #ddd; }
+        .result-row { display: flex; align-items: baseline; gap: 4px; margin-bottom: 5px; white-space: nowrap; }
+        .result-label { flex: 0 0 340px; font-weight: bold; }
+        hr { margin: 15px 0; }
+        .unit { margin-left: 5px; color: #555; }
+        .limit-text { font-size:0.85em; color:#666; }
+        .field-note { font-size:0.85em; color:#666; margin-left: 10px; }
+        .form-row { display: grid; grid-template-columns: minmax(420px, 1fr) 130px 26px minmax(260px, 1fr) 120px; align-items: baseline; column-gap: 8px; margin-bottom: 5px; white-space: nowrap; }
+        .form-row label { width: auto; margin-bottom: 0; }
+        .form-row input[type="number"] { margin-bottom: 0; }
+        .form-row select { margin-bottom: 0; }
+        .label-with-limits { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+        .label-with-limits label { flex: 0 0 auto; }
+        .label-with-limits .limit-text { overflow: visible; }
+        .simple-row { display: grid; grid-template-columns: 220px 180px 1fr; align-items: baseline; column-gap: 6px; margin-bottom: 5px; white-space: nowrap; }
+        .simple-row label { width: auto; margin-bottom: 0; }
+        .simple-row input[type="number"] { margin-bottom: 0; }
+        .simple-row select { margin-bottom: 0; }
+    </style>
+</head>
+<body>
+
+<h1 class="page-title">Thread Milling Calculator</h1>
+<p class="page-subtitle">Corrects helical interpolation flank overcut.</p>
+
+<div class="container">
+    <h2>Fusion 360 Thread Data</h2>
+    <p style="font-size: 0.85em; color: #666; margin-top: -5px; margin-bottom: 15px; background: #f9f9f9; padding: 10px; border-radius: 4px; border: 1px solid #ddd;">
+        <strong>Where to find the XML files on Windows:</strong><br>
+        <code>%localappdata%\Autodesk\webdeploy\production\&lt;VERSION&gt;\Fusion\Server\Fusion\Configuration\ThreadData</code>
+    </p>
+    <input type="file" id="xmlFile" accept=".xml" onchange="handleFileUpload(event)">
+    <br><br>
+    
+    <div>
+        <label>1. Select Gender:</label>
+        <select id="filterGender" onchange="handleGenderChange()">
+            <option value="internal">Female (Internal)</option>
+            <option value="external">Male (External)</option>
+        </select>
+    </div>
+    
+    <div>
+        <label>2. Select Nominal Size:</label>
+        <select id="filterSize" onchange="handleSizeChange()">
+            <option value="">-- Load XML First --</option>
+        </select>
+    </div>
+    
+    <div>
+        <label>3. Select Exact Thread:</label>
+        <select id="threadSelect" onchange="handleThreadSelection()">
+            <option value="">-- Load XML First --</option>
+        </select>
+    </div>
+
+    <button onclick="transferFusionThread()">Transfer Selected Thread to Calculator</button>
+</div>
+
+<div style="display: flex; gap: 20px; align-items: stretch;">
+    <div class="container" style="flex: 0 0 1120px; margin-bottom: 0;">
+        <h1>Thread Mill Offset Calculator</h1>
+    
+    <div class="simple-row">
+        <label>Display Units:</label>
+        <select id="displayUnit" onchange="handleUnitChange()">
+            <option value="mm">Millimeters (mm)</option>
+            <option value="in">Inches (in)</option>
+        </select>
+    </div>
+
+    <div class="simple-row">
+        <label>Thread Standard:</label>
+        <select id="threadStandard" onchange="handleStandardChange()">
+            <option value="metric">ISO Metric</option>
+            <option value="unified">Unified Inch</option>
+        </select>
+    </div>
+    
+    <div class="simple-row">
+        <label>Thread Type:</label>
+        <select id="isFemale" onchange="handleStandardInputsChanged()">
+            <option value="true">Female (Internal)</option>
+            <option value="false">Male (External)</option>
+        </select>
+    </div>
+
+    <div class="simple-row">
+        <label>Nominal Size:</label>
+        <span><input type="number" id="nominal" value="14" step="any" onchange="handleStandardInputsChanged()"><span class="unit" id="unitLabelNominal">mm</span></span>
+    </div>
+    <div class="simple-row">
+        <label>Pitch:</label>
+        <span><input type="number" id="pitch" value="2.0" step="any" onchange="handleStandardInputsChanged()"><span class="unit" id="unitLabelPitch">mm</span></span>
+    </div>
+    <div class="simple-row" id="seriesRow" style="display:none;">
+        <label>Thread Series:</label>
+        <select id="threadSeries" onchange="handleStandardInputsChanged()">
+            <option value="UNC">UNC</option>
+            <option value="UNF">UNF</option>
+            <option value="UNEF">UNEF</option>
+            <option value="UN">UN</option>
+            <option value="UNS">UNS</option>
+        </select>
+    </div>
+    <div class="simple-row">
+        <label>Thread Class:</label>
+        <select id="threadClass" onchange="handleClassChanged()"></select>
+        <span id="classStatus" class="field-note"></span>
+    </div>
+    
+    <div class="form-row">
+        <span class="label-with-limits"><label>Pitch Diameter:</label><span id="pdLimits" class="limit-text"></span></span>
+        <input type="number" id="pd" value="12.8069" step="any"><span class="unit" id="unitLabelPD">mm</span>
+        <input type="range" id="pdPosition" min="0" max="1" step="0.001" value="0.5" oninput="handleDiameterSlider('pd')">
+        <input type="number" id="pdPositionValue" value="0.5" min="0" max="1" step="0.001" onchange="handleDiameterPositionInput('pd')">
+    </div>
+    <div class="form-row" id="majorRow">
+        <span class="label-with-limits"><label>Major Diameter:</label><span id="majorLimits" class="limit-text"></span></span>
+        <span id="majorField"><input type="number" id="major" value="14.3138" step="any"></span><span class="unit" id="unitLabelMajor">mm</span>
+        <span id="majorControl"></span>
+        <span id="majorPositionControl"></span>
+    </div>
+    <div class="form-row" id="minorRow">
+        <span class="label-with-limits"><label>Minor Diameter:</label><span id="minorLimits" class="limit-text"></span></span>
+        <span id="minorField"><input type="number" id="minor" value="12.0225" step="any"></span><span class="unit" id="unitLabelMinor">mm</span>
+        <span id="minorControl"></span>
+        <span id="minorPositionControl"></span>
+    </div>
+    
+
+    <hr>
+
+    <div class="section-heading">Cutter Geometry</div>
+    
+    <div class="simple-row"><label>Cutter Diameter:</label><span><input type="number" id="cutter" value="11.7" step="any"><span class="unit" id="unitLabelCutter">mm</span></span></div>
+    <div class="simple-row"><label>Tip Flat Width:</label><span><input type="number" id="tipFlat" value="0.13" step="any"><span class="unit" id="unitLabelFlat">mm</span></span></div>
+    
+    <button onclick="calculate()">Calculate Correction</button>
+    
+    <div class="result-box" id="results" style="display:none;">
+        <div class="result-row"><span class="result-label">Fusion Automatic Pitch Diameter Offset:</span><span id="res_fusion_pdo"></span> <span class="res_unit">mm</span></div>
+        <div class="result-row"><span class="result-label">Adjusted Pitch Diameter Offset:</span><span id="res_pdo"></span> <span class="res_unit">mm</span></div>
+        <div class="result-row"><span class="result-label" id="res_cut_label">Resulting Major Diameter:</span><span id="res_cut"></span> <span class="res_unit">mm</span> (<span id="res_diff" style="font-weight:bold;"></span> from target)</div>
+        <div class="result-row"><span class="result-label" id="res_stock_label">Hole Diameter:</span><span id="res_stock"></span> <span class="res_unit">mm</span></div>
+    </div>
+</div>
+
+<div class="container" id="canvasContainer" style="display:none; flex: 1; margin-bottom: 0;">
+    <h2>Thread Form Visualization</h2>
+    <p style="font-size: 0.9em; color: #555;">Cross-section of the thread groove. The dashed red line shows the axial overcut from a standard toolpath.</p>
+    
+    <div style="margin-bottom: 15px; font-size: 0.85em; display: flex; flex-wrap: wrap; gap: 15px;">
+        <div style="display: flex; align-items: center; gap: 5px;">
+            <div style="width: 20px; height: 10px; background: rgba(0,0,0,0.05); border: 1px solid rgba(0,0,0,0.8);"></div>
+            <span>Ideal Form</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 5px;">
+            <div style="width: 20px; height: 0px; border-top: 2px dashed red;"></div>
+            <span>Standard (Overcut)</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 5px;">
+            <div style="width: 20px; height: 10px; background: rgba(0,255,0,0.1); border-top: 2px solid green; border-bottom: 2px solid green;"></div>
+            <span>Compensated Cut</span>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 5px;" id="legendTol">
+            <div style="width: 20px; height: 0px; border-top: 2px dotted orange;"></div>
+            <span>Tolerance Limits</span>
+        </div>
+    </div>
+    
+    <canvas id="profileCanvas" width="500" height="550" style="background:#fff; display:block; margin:auto;"></canvas>
+</div>
+</div>
+
+<script>
+// --- INJECTED_METRIC_JS ---
+// --- INJECTED_IMPERIAL_JS ---
+// --- INJECTED_SOLVER_JS ---
+
+// Global dictionary to hold thread data
+let threadDB = {};
+let currentUnit = "mm";
+
+// Handle XML File Upload
+function handleFileUpload(event) {
+    let file = event.target.files[0];
+    if (!file) return;
+    
+    let reader = new FileReader();
+    reader.onload = function(e) {
+        let text = e.target.result;
+        parseFusionXML(text);
+    };
+    reader.readAsText(file);
+}
+
+function parseFusionXML(xmlText) {
+    let parser = new DOMParser();
+    let xmlDoc = parser.parseFromString(xmlText, "text/xml");
+    
+    let unitNode = xmlDoc.getElementsByTagName("Unit")[0];
+    let fileUnit = unitNode ? unitNode.textContent.trim() : "mm";
+    
+    let threadSizes = xmlDoc.getElementsByTagName("ThreadSize");
+    threadDB = {};
+    
+    for (let i = 0; i < threadSizes.length; i++) {
+        let tsNode = threadSizes[i];
+        let sizeNode = tsNode.getElementsByTagName("Size")[0];
+        if (!sizeNode) continue;
+        let sizeVal = sizeNode.textContent.trim();
+        
+        let designations = tsNode.getElementsByTagName("Designation");
+        for (let j = 0; j < designations.length; j++) {
+            let des = designations[j];
+            let nameNode = des.getElementsByTagName("ThreadDesignation")[0];
+            let pitchNode = des.getElementsByTagName("Pitch")[0];
+            let tpiNode = des.getElementsByTagName("TPI")[0];
+            
+            if (!nameNode || (!pitchNode && !tpiNode)) continue;
+            
+            let threadName = nameNode.textContent;
+            let pitch = 0;
+            if (pitchNode) {
+                pitch = parseFloat(pitchNode.textContent);
+            } else if (tpiNode) {
+                pitch = 1.0 / parseFloat(tpiNode.textContent);
+            }
+            
+            let threads = des.getElementsByTagName("Thread");
+            for (let k = 0; k < threads.length; k++) {
+                let t = threads[k];
+                let gender = t.getElementsByTagName("Gender")[0].textContent;
+                let threadClass = t.getElementsByTagName("Class")[0] ? t.getElementsByTagName("Class")[0].textContent : "";
+                let major = parseFloat(t.getElementsByTagName("MajorDia")[0].textContent);
+                let minor = parseFloat(t.getElementsByTagName("MinorDia")[0].textContent);
+                let pd = parseFloat(t.getElementsByTagName("PitchDia")[0].textContent);
+                
+                let id = `${threadName} - ${gender} - ${threadClass}`;
+                threadDB[id] = {
+                    id: id,
+                    name: threadName,
+                    size: sizeVal,
+                    gender: gender,
+                    threadClass: threadClass,
+                    pitch: pitch,
+                    unit: fileUnit,
+                    major: major,
+                    minor: minor,
+                    pd: pd
+                };
+            }
+        }
+    }
+    
+    // Save to local storage
+    localStorage.setItem("threadDB", JSON.stringify(threadDB));
+    populateSizeDropdown();
+    alert("Loaded " + Object.keys(threadDB).length + " threads successfully!");
+}
+
+function getUniqueSizes(gender) {
+    let sizes = new Set();
+    for (let key in threadDB) {
+        if (threadDB[key].gender === gender) {
+            sizes.add(threadDB[key].size); // Keep as string since ANSI uses (#2) notation sometimes
+        }
+    }
+    return Array.from(sizes).sort((a, b) => {
+        let fa = parseFloat(a);
+        let fb = parseFloat(b);
+        if (!isNaN(fa) && !isNaN(fb)) return fa - fb;
+        return a.localeCompare(b);
+    });
+}
+
+function handleGenderChange() {
+    let gender = document.getElementById("filterGender").value;
+    localStorage.setItem("lastGender", gender);
+    populateSizeDropdown();
+}
+
+function populateSizeDropdown() {
+    if (Object.keys(threadDB).length === 0) return;
+    
+    let gender = document.getElementById("filterGender").value;
+    let sizeSelect = document.getElementById("filterSize");
+    let oldSize = sizeSelect.value || localStorage.getItem("lastSize");
+    
+    let sizes = getUniqueSizes(gender);
+    sizeSelect.innerHTML = '<option value="">-- Select Size --</option>';
+    
+    let firstUnit = "";
+    
+    sizes.forEach(s => {
+        let opt = document.createElement("option");
+        opt.value = s;
+        // Find unit for this size just in case
+        let u = "";
+        for (let k in threadDB) {
+            if (threadDB[k].size === s && threadDB[k].gender === gender) {
+                u = threadDB[k].unit;
+                if (!firstUnit) firstUnit = u;
+                break;
+            }
+        }
+        opt.textContent = s + (u ? " " + u : "");
+        sizeSelect.appendChild(opt);
+    });
+    
+    if (oldSize && Array.from(sizeSelect.options).some(o => o.value == oldSize)) {
+        sizeSelect.value = oldSize;
+    } else if (sizes.length > 0) {
+        sizeSelect.value = sizes[0];
+    }
+    
+    handleSizeChange();
+}
+
+function handleSizeChange() {
+    let size = document.getElementById("filterSize").value;
+    localStorage.setItem("lastSize", size);
+    populateThreadDropdown();
+}
+
+function populateThreadDropdown() {
+    let gender = document.getElementById("filterGender").value;
+    let size = document.getElementById("filterSize").value;
+    let threadSelect = document.getElementById("threadSelect");
+    let oldThread = threadSelect.value || localStorage.getItem("lastSelectedThread");
+    
+    threadSelect.innerHTML = '<option value="">-- Select Thread --</option>';
+    
+    // Filter matching threads
+    let matchingThreads = [];
+    for (let key in threadDB) {
+        let t = threadDB[key];
+        if (t.gender === gender && t.size === size) {
+            matchingThreads.push(t);
+        }
+    }
+    
+    // Sort logically by pitch and class
+    matchingThreads.sort((a, b) => {
+        if (a.pitch !== b.pitch) return b.pitch - a.pitch; // Coarse pitch first usually
+        return a.threadClass.localeCompare(b.threadClass);
+    });
+    
+    matchingThreads.forEach(t => {
+        let opt = document.createElement("option");
+        opt.value = t.id;
+        opt.textContent = `${t.name} (Class ${t.threadClass})`;
+        threadSelect.appendChild(opt);
+    });
+    
+    if (oldThread && Array.from(threadSelect.options).some(o => o.value == oldThread)) {
+        threadSelect.value = oldThread;
+    } else if (matchingThreads.length > 0) {
+        threadSelect.value = matchingThreads[0].id;
+    }
+    handleThreadSelection(false);
+}
+
+function handleThreadSelection(manual = true) {
+    let select = document.getElementById("threadSelect");
+    let val = select.value;
+    if (val && threadDB[val]) {
+        localStorage.setItem("lastSelectedThread", val);
+    }
+}
+
+function parseNominalSize(sizeStr) {
+    sizeStr = String(sizeStr).trim();
+    if (sizeStr.includes(" ")) {
+        let parts = sizeStr.split(" ");
+        let frac = parts[1].split("/");
+        return parseFloat(parts[0]) + (parseFloat(frac[0]) / parseFloat(frac[1]));
+    }
+    if (sizeStr.includes("/")) {
+        let frac = sizeStr.split("/");
+        return parseFloat(frac[0]) / parseFloat(frac[1]);
+    }
+    return parseFloat(sizeStr);
+}
+
+function transferFusionThread() {
+    let val = document.getElementById("threadSelect").value;
+    if (!val || !threadDB[val]) return;
+
+    let t = threadDB[val];
+    let isMetric = t.name.startsWith("M");
+    let standard = isMetric ? "metric" : "unified";
+    let factor = 1.0;
+    if (t.unit === "mm" && currentUnit === "in") factor = 1.0 / 25.4;
+    if (t.unit === "in" && currentUnit === "mm") factor = 25.4;
+
+    document.getElementById("threadStandard").value = standard;
+    document.getElementById("isFemale").value = t.gender === "internal" ? "true" : "false";
+    document.getElementById("nominal").value = parseFloat((parseNominalSize(t.size) * factor).toFixed(7));
+    document.getElementById("pitch").value = parseFloat((t.pitch * factor).toFixed(7));
+
+    if (!isMetric) {
+        let seriesMatch = t.name.match(/\b(UNC|UNF|UNEF|UN|UNS)\b/);
+        document.getElementById("threadSeries").value = seriesMatch ? seriesMatch[1] : "UN";
+    }
+
+    handleStandardChange(false);
+    setClassIfAvailable(t.threadClass);
+    updateLimitsFromInputs(true);
+
+    let fusionPd = t.pd * factor;
+    let fusionMajor = t.major * factor;
+    let fusionMinor = t.minor * factor;
+    let limits = window.currentLimits;
+
+    if (limits) {
+        let pdPos = positionFromRange(fusionPd, engineToDisplay(limits.pitch_min), engineToDisplay(limits.pitch_max));
+        setPositionControls("pd", pdPos);
+        document.getElementById("pd").value = parseFloat(fusionPd.toFixed(currentUnit === "in" ? 6 : 4));
+
+        if (t.gender === "internal") {
+            let minorPos = positionFromRange(fusionMinor, engineToDisplay(limits.minor_min), engineToDisplay(limits.minor_max));
+            setPositionControls("minor", minorPos);
+            document.getElementById("minor").value = parseFloat(fusionMinor.toFixed(currentUnit === "in" ? 6 : 4));
+            setDiameterFieldMode("major", false, fusionMajor);
+        } else {
+            let majorPos = positionFromRange(fusionMajor, engineToDisplay(limits.major_min), engineToDisplay(limits.major_max));
+            setPositionControls("major", majorPos);
+            document.getElementById("major").value = parseFloat(fusionMajor.toFixed(currentUnit === "in" ? 6 : 4));
+            setDiameterFieldMode("minor", false, fusionMinor);
+        }
+    } else {
+        document.getElementById("pd").value = parseFloat(fusionPd.toFixed(7));
+        document.getElementById("major").value = parseFloat(fusionMajor.toFixed(7));
+        document.getElementById("minor").value = parseFloat(fusionMinor.toFixed(7));
+    }
+    calculate();
+}
+
+function getEngineUnits() {
+    return document.getElementById("threadStandard").value === "metric" ? "mm" : "in";
+}
+
+function displayToEngine(val) {
+    let engineUnit = getEngineUnits();
+    if (currentUnit === engineUnit) return val;
+    return engineUnit === "mm" ? val * 25.4 : val / 25.4;
+}
+
+function engineToDisplay(val) {
+    let engineUnit = getEngineUnits();
+    if (currentUnit === engineUnit) return val;
+    return engineUnit === "mm" ? val / 25.4 : val * 25.4;
+}
+
+function formatLen(val) {
+    if (val === null || val === undefined || !isFinite(val)) return "N/A";
+    return val.toFixed(currentUnit === "in" ? 5 : 4);
+}
+
+function getClassCandidates() {
+    let standard = document.getElementById("threadStandard").value;
+    let isFemale = document.getElementById("isFemale").value === "true";
+    if (standard === "unified") {
+        return isFemale ? ["1B", "2B", "3B"] : ["1A", "2A", "3A"];
+    }
+
+    let classes = [];
+    if (isFemale) {
+        ["G", "H"].forEach(letter => {
+            ["4", "5", "6", "7", "8"].forEach(pg => {
+                classes.push(pg + letter);
+                ["4", "5", "6", "7", "8"].forEach(cg => classes.push(pg + letter + cg + letter));
+            });
+        });
+    } else {
+        ["e", "f", "g", "h"].forEach(letter => {
+            ["3", "4", "5", "6", "7", "8", "9"].forEach(pg => {
+                classes.push(pg + letter);
+                ["4", "6", "8"].forEach(cg => classes.push(pg + letter + cg + letter));
+            });
+        });
+    }
+    return Array.from(new Set(classes));
+}
+
+function getLimitsForClass(threadClass) {
+    let standard = document.getElementById("threadStandard").value;
+    let nominal = displayToEngine(parseFloat(document.getElementById("nominal").value));
+    let pitch = displayToEngine(parseFloat(document.getElementById("pitch").value));
+    if (!isFinite(nominal) || !isFinite(pitch) || nominal <= 0 || pitch <= 0) return null;
+
+    if (standard === "metric") {
+        if (typeof getThreadLimits === "undefined") return null;
+        return getThreadLimits(nominal, pitch, threadClass);
+    }
+
+    if (typeof getUnifiedThreadLimits === "undefined") return null;
+    let tpi = Math.round(1.0 / pitch);
+    if (Math.abs((1.0 / pitch) - tpi) > 0.0001) return null;
+    return getUnifiedThreadLimits(nominal, tpi, threadClass, document.getElementById("threadSeries").value);
+}
+
+function populateClassOptions(preferredClass) {
+    let classSelect = document.getElementById("threadClass");
+    let oldClass = preferredClass || classSelect.value;
+    let candidates = getClassCandidates();
+    let valid = [];
+
+    candidates.forEach(cls => {
+        try {
+            let limits = getLimitsForClass(cls);
+            if (limits) valid.push(cls);
+        } catch(e) {}
+    });
+
+    classSelect.innerHTML = "";
+    valid.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    valid.forEach(cls => {
+        let opt = document.createElement("option");
+        opt.value = cls;
+        opt.textContent = cls;
+        classSelect.appendChild(opt);
+    });
+
+    if (valid.includes(oldClass)) {
+        classSelect.value = oldClass;
+    } else if (valid.length > 0) {
+        let fallback = document.getElementById("isFemale").value === "true" ? "6H" : "6g";
+        classSelect.value = valid.includes(fallback) ? fallback : valid[0];
+    }
+
+    document.getElementById("classStatus").innerText = valid.length ? "" : "No valid classes for this nominal size and pitch.";
+}
+
+function setClassIfAvailable(threadClass) {
+    let classSelect = document.getElementById("threadClass");
+    if (Array.from(classSelect.options).some(o => o.value === threadClass)) {
+        classSelect.value = threadClass;
+    }
+}
+
+function handleStandardChange(shouldCalculate = true) {
+    let standard = document.getElementById("threadStandard").value;
+    let engineUnit = getEngineUnits();
+    document.getElementById("seriesRow").style.display = standard === "unified" ? "grid" : "none";
+    document.getElementById("unitLabelNominal").innerText = currentUnit;
+    document.getElementById("unitLabelPitch").innerText = standard === "unified" ? currentUnit + " (or 1/TPI)" : currentUnit;
+    populateClassOptions();
+    updateLimitsFromInputs(true);
+    if (shouldCalculate) calculate();
+}
+
+function handleStandardInputsChanged() {
+    populateClassOptions();
+    updateLimitsFromInputs(true);
+    calculate();
+}
+
+function handleClassChanged() {
+    updateLimitsFromInputs(true);
+    calculate();
+}
+
+function interpolate(min, max, pos) {
+    return min + (max - min) * pos;
+}
+
+function positionFromRange(value, min, max) {
+    if (!isFinite(value) || !isFinite(min) || !isFinite(max) || Math.abs(max - min) < 1e-12) return 0.5;
+    return clamp01((value - min) / (max - min));
+}
+
+function clamp01(val) {
+    if (!isFinite(val)) return 0.5;
+    return Math.max(0, Math.min(1, val));
+}
+
+function setPositionControls(kind, pos) {
+    pos = clamp01(pos);
+    document.getElementById(kind + "Position").value = pos;
+    document.getElementById(kind + "PositionValue").value = pos.toFixed(3);
+}
+
+function setControlledDiameter(kind, min, max, pos) {
+    if (!isFinite(min) || !isFinite(max)) return;
+    document.getElementById(kind).value = parseFloat(interpolate(min, max, clamp01(pos)).toFixed(currentUnit === "in" ? 6 : 4));
+    setPositionControls(kind, pos);
+}
+
+function setDiameterFieldMode(kind, editable, value) {
+    let field = document.getElementById(kind + "Field");
+    let existing = document.getElementById(kind);
+    let currentValue = value !== undefined ? value : (existing ? parseFloat(existing.value) : 0);
+    let dec = currentUnit === "in" ? 6 : 4;
+    if (editable) {
+        field.innerHTML = '<input type="number" id="' + kind + '" value="' + parseFloat(currentValue.toFixed(dec)) + '" step="any">';
+    } else {
+        field.innerHTML = '<input type="hidden" id="' + kind + '" value="' + parseFloat(currentValue.toFixed(dec)) + '"><span class="field-note">' + formatLen(currentValue) + ' calculated</span>';
+    }
+}
+
+function applyDiameterSlider(kind) {
+    let limits = window.currentLimits;
+    if (!limits) return;
+    let isFemale = document.getElementById("isFemale").value === "true";
+    let pos = parseFloat(document.getElementById(kind + "Position").value);
+
+    if (kind === "pd") {
+        setControlledDiameter("pd", engineToDisplay(limits.pitch_min), engineToDisplay(limits.pitch_max), pos);
+    } else if (kind === "minor" && isFemale) {
+        setControlledDiameter("minor", engineToDisplay(limits.minor_min), engineToDisplay(limits.minor_max), pos);
+    } else if (kind === "major" && !isFemale) {
+        setControlledDiameter("major", engineToDisplay(limits.major_min), engineToDisplay(limits.major_max), pos);
+    }
+}
+
+function handleDiameterSlider(kind) {
+    document.getElementById(kind + "PositionValue").value = parseFloat(document.getElementById(kind + "Position").value).toFixed(3);
+    updateLimitsFromInputs(false);
+    applyDiameterSlider(kind);
+    calculate();
+}
+
+function handleDiameterPositionInput(kind) {
+    setPositionControls(kind, parseFloat(document.getElementById(kind + "PositionValue").value));
+    updateLimitsFromInputs(false);
+    applyDiameterSlider(kind);
+    calculate();
+}
+
+function renderDiameterControl(targetKind) {
+    let majorControl = document.getElementById("majorControl");
+    let minorControl = document.getElementById("minorControl");
+    let majorPositionControl = document.getElementById("majorPositionControl");
+    let minorPositionControl = document.getElementById("minorPositionControl");
+    majorControl.innerHTML = "";
+    minorControl.innerHTML = "";
+    majorPositionControl.innerHTML = "";
+    minorPositionControl.innerHTML = "";
+    let slider = "<input type=\"range\" id=\"" + targetKind + "Position\" min=\"0\" max=\"1\" step=\"0.001\" value=\"0.5\" oninput=\"handleDiameterSlider('" + targetKind + "')\">";
+    let position = "<input type=\"number\" id=\"" + targetKind + "PositionValue\" value=\"0.5\" min=\"0\" max=\"1\" step=\"0.001\" onchange=\"handleDiameterPositionInput('" + targetKind + "')\">";
+    if (targetKind === "major") {
+        majorControl.innerHTML = slider;
+        majorPositionControl.innerHTML = position;
+    } else {
+        minorControl.innerHTML = slider;
+        minorPositionControl.innerHTML = position;
+    }
+}
+
+function updateLimitsFromInputs(applySliders) {
+    let threadClass = document.getElementById("threadClass").value;
+    let isFemale = document.getElementById("isFemale").value === "true";
+    let limits = null;
+    try {
+        limits = threadClass ? getLimitsForClass(threadClass) : null;
+    } catch(e) {
+        limits = null;
+        document.getElementById("classStatus").innerText = e.message;
+    }
+
+    window.currentLimits = limits;
+    if (!limits) {
+        document.getElementById("pdLimits").innerText = "";
+        document.getElementById("majorLimits").innerText = "";
+        document.getElementById("minorLimits").innerText = "";
+        return;
+    }
+    document.getElementById("classStatus").innerText = "";
+
+    let majorMin = engineToDisplay(limits.major_min);
+    let majorMax = engineToDisplay(limits.major_max);
+    let pitchMin = engineToDisplay(limits.pitch_min);
+    let pitchMax = engineToDisplay(limits.pitch_max);
+    let minorMin = engineToDisplay(limits.minor_min);
+    let minorMax = engineToDisplay(limits.minor_max_flat || limits.minor_max);
+
+    document.getElementById("majorLimits").innerText = `[Min: ${formatLen(majorMin)}, Max: ${formatLen(majorMax)}]`;
+    document.getElementById("pdLimits").innerText = `[Min: ${formatLen(pitchMin)}, Max: ${formatLen(pitchMax)}]`;
+    document.getElementById("minorLimits").innerText = `[Min: ${formatLen(minorMin)}, Max: ${formatLen(minorMax)}]`;
+
+    let targetKind = isFemale ? "minor" : "major";
+    if (applySliders || !document.getElementById(targetKind + "Position")) {
+        renderDiameterControl(targetKind);
+    }
+
+    if (applySliders) {
+        setControlledDiameter("pd", pitchMin, pitchMax, parseFloat(document.getElementById("pdPosition").value));
+        if (isFemale) {
+            setDiameterFieldMode("minor", true);
+            setControlledDiameter("minor", minorMin, minorMax, document.getElementById("minorPosition") ? parseFloat(document.getElementById("minorPosition").value) : 0.5);
+            setDiameterFieldMode("major", false, majorMin);
+        } else {
+            setDiameterFieldMode("major", true);
+            setControlledDiameter("major", majorMin, majorMax, document.getElementById("majorPosition") ? parseFloat(document.getElementById("majorPosition").value) : 0.5);
+            if (isFinite(minorMax)) setDiameterFieldMode("minor", false, minorMax);
+        }
+    }
+}
+
+function handleUnitChange() {
+    let newUnit = document.getElementById("displayUnit").value;
+    updateUnits(newUnit);
+}
+
+function updateUnits(newUnit) {
+    if (newUnit !== currentUnit) {
+        let factor = newUnit === "in" ? (1.0 / 25.4) : 25.4;
+        
+        let inputsToConvert = ["nominal", "pd", "major", "minor", "pitch", "cutter", "tipFlat"];
+        inputsToConvert.forEach(id => {
+            let el = document.getElementById(id);
+            if (el && el.value !== "") {
+                let val = parseFloat(el.value);
+                if (!isNaN(val)) {
+                    el.value = parseFloat((val * factor).toFixed(7));
+                }
+            }
+        });
+        
+        currentUnit = newUnit;
+        localStorage.setItem("displayUnit", currentUnit);
+    }
+    
+    updateUnitLabels();
+    populateClassOptions();
+    updateLimitsFromInputs(false);
+}
+
+function updateUnitLabels() {
+    document.getElementById("unitLabelNominal").innerText = currentUnit;
+    document.getElementById("unitLabelPD").innerText = currentUnit;
+    document.getElementById("unitLabelMajor").innerText = currentUnit;
+    document.getElementById("unitLabelMinor").innerText = currentUnit;
+    document.getElementById("unitLabelPitch").innerText = document.getElementById("threadStandard").value === "unified" ? currentUnit + " (or 1/TPI)" : currentUnit;
+    document.getElementById("unitLabelCutter").innerText = currentUnit;
+    document.getElementById("unitLabelFlat").innerText = currentUnit;
+    
+    let resUnits = document.getElementsByClassName("res_unit");
+    for (let i = 0; i < resUnits.length; i++) {
+        resUnits[i].innerText = currentUnit;
+    }
+}
+
+// On page load, try to load database from local storage
+window.onload = function() {
+    let savedUnit = localStorage.getItem("displayUnit");
+    if (savedUnit) {
+        document.getElementById("displayUnit").value = savedUnit;
+        currentUnit = savedUnit;
+        updateUnitLabels();
+    }
+    
+    let savedDB = localStorage.getItem("threadDB");
+    if (savedDB) {
+        try {
+            threadDB = JSON.parse(savedDB);
+            
+            let lastGender = localStorage.getItem("lastGender");
+            if (lastGender) document.getElementById("filterGender").value = lastGender;
+            
+            populateSizeDropdown();
+        } catch (e) {
+            console.log("Error loading DB from local storage", e);
+        }
+    }
+    handleStandardChange(false);
+    updateLimitsFromInputs(true);
+}
+
+function calculate() {
+    updateLimitsFromInputs(false);
+    let isFemale = document.getElementById('isFemale').value === 'true';
+    let pd = parseFloat(document.getElementById('pd').value);
+    let major = parseFloat(document.getElementById('major').value);
+    let minor = parseFloat(document.getElementById('minor').value);
+    let pitch = parseFloat(document.getElementById('pitch').value);
+    let cutter = parseFloat(document.getElementById('cutter').value);
+    let threadAngle = 60.0;
+    let tipFlat = parseFloat(document.getElementById('tipFlat').value);
+    
+    let res = solveThreadMillOffset(isFemale, pd, major, minor, cutter, pitch, threadAngle, tipFlat);
+    
+    console.log("Calculation Results:", res);
+    
+    document.getElementById('results').style.display = 'block';
+    
+    // For inches, we need more decimal places (6 usually)
+    let dec = currentUnit === "in" ? 6 : 4;
+    
+    document.getElementById('res_fusion_pdo').innerText = res.fusion_auto_pdo.toFixed(dec);
+    document.getElementById('res_pdo').innerText = res.pdo.toFixed(dec);
+    document.getElementById('res_stock_label').innerText = isFemale ? "Hole Diameter:" : "Boss Diameter:";
+    document.getElementById('res_stock').innerText = (isFemale ? minor : major).toFixed(dec);
+    
+    if (isFemale) {
+        let diff = res.resulting_major - major;
+        document.getElementById('res_cut_label').innerText = "Resulting Major Diameter:";
+        document.getElementById('res_cut').innerText = res.resulting_major.toFixed(dec);
+        document.getElementById('res_diff').innerText = (diff > 0 ? "+" : "") + diff.toFixed(dec) + " " + currentUnit;
+        
+        if (window.currentLimits) {
+            let limitMin = engineToDisplay(window.currentLimits.major_min);
+            let limitMax = window.currentLimits.major_max !== null ? engineToDisplay(window.currentLimits.major_max) : Infinity;
+            
+            if (res.resulting_major >= limitMin && res.resulting_major <= limitMax) {
+                document.getElementById('res_diff').innerHTML += ' <span style="color:green; margin-left:10px;">[IN SPEC]</span>';
+            } else {
+                document.getElementById('res_diff').innerHTML += ' <span style="color:red; font-weight:bold; margin-left:10px;">[OUT OF SPEC]</span>';
+            }
+        }
+    } else {
+        let diff = res.resulting_minor - minor;
+        document.getElementById('res_cut_label').innerText = "Resulting Minor Diameter:";
+        document.getElementById('res_cut').innerText = res.resulting_minor.toFixed(dec);
+        document.getElementById('res_diff').innerText = (diff > 0 ? "+" : "") + diff.toFixed(dec) + " " + currentUnit;
+        
+        if (window.currentLimits && window.currentLimits.minor_min !== null && window.currentLimits.minor_max !== null) {
+            let limitMin = engineToDisplay(window.currentLimits.minor_min);
+            let limitMax = window.currentLimits.minor_max_flat ? engineToDisplay(window.currentLimits.minor_max_flat) : engineToDisplay(window.currentLimits.minor_max);
+            
+            if (res.resulting_minor >= limitMin && res.resulting_minor <= limitMax) {
+                document.getElementById('res_diff').innerHTML += ' <span style="color:green; margin-left:10px;">[IN SPEC]</span>';
+            } else {
+                document.getElementById('res_diff').innerHTML += ' <span style="color:red; font-weight:bold; margin-left:10px;">[OUT OF SPEC]</span>';
+            }
+        }
+    }
+    
+    document.getElementById("canvasContainer").style.display = 'block';
+    
+    let alpha = (threadAngle / 2) * Math.PI / 180;
+    let cutter_pd = cutter - (pitch/2 - tipFlat) / Math.tan(alpha);
+    let Rc_initial = isFemale ? (pd - cutter_pd) / 2 : (pd + cutter_pd) / 2;
+    
+    drawProfiles(res.Rc_opt, Rc_initial, isFemale, pd, major, minor, cutter, pitch, threadAngle, tipFlat);
+}
+
+function drawProfiles(Rc_opt, Rc_initial, isFemale, pd, major, minor, cutter, pitch, threadAngle, tipFlat) {
+    let canvas = document.getElementById("profileCanvas");
+    let ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    let alpha = (threadAngle / 2) * Math.PI / 180;
+    
+    // 1:1 Aspect Ratio Mapping
+    let X_range = Math.abs(major/2 - minor/2) + 1.2 * pitch; 
+    let Z_range = 2.4 * pitch; // Show 2 teeth
+    
+    let avail_W = canvas.width - 60; 
+    let avail_H = canvas.height - 60; 
+    
+    let scale_X = avail_W / X_range; 
+    let scale_Z = avail_H / Z_range; 
+    let scale = Math.min(scale_X, scale_Z);
+    
+    let Z_center = pitch / 2; // Center on crest between two roots
+    let X_center = (major/2 + minor/2) / 2;
+    
+    let canvas_X_center = canvas.width / 2; 
+    let canvas_Z_center = canvas.height / 2; // Centered vertically
+    
+    function mapX(x) {
+        // Larger radius (major of female) on left. 
+        return canvas_X_center - (x - X_center) * scale;
+    }
+    function mapZ(z) {
+        // Axial distance goes top to bottom
+        return canvas_Z_center + (z - Z_center) * scale;
+    }
+    
+    // Draw vertical reference lines
+    ctx.lineWidth = 1;
+    ctx.font = "12px monospace";
+    
+    let lines = [
+        {rad: minor/2, name: "Minor", color: "#ccc", dash: [2, 2], pos: "bottom"},
+        {rad: pd/2, name: "Pitch", color: "#ccc", dash: [2, 2], pos: "bottom"},
+        {rad: major/2, name: "Major", color: "#ccc", dash: [2, 2], pos: "bottom"}
+    ];
+    
+    // Add Tolerance Bands for the Cut Target
+    if (window.currentLimits) {
+        if (isFemale) {
+            lines.push({rad: engineToDisplay(window.currentLimits.major_min) / 2, name: "Major Min", color: "orange", dash: [2, 2], pos: "top"});
+            if (window.currentLimits.major_max !== null && window.currentLimits.major_max !== undefined) {
+                lines.push({rad: engineToDisplay(window.currentLimits.major_max) / 2, name: "Major Max", color: "orange", dash: [2, 2], pos: "top"});
+            }
+        } else {
+            if (window.currentLimits.minor_min !== null) {
+                lines.push({rad: engineToDisplay(window.currentLimits.minor_min) / 2, name: "Minor Min", color: "orange", dash: [2, 2], pos: "top"});
+            }
+            if (window.currentLimits.minor_max_flat) {
+                lines.push({rad: engineToDisplay(window.currentLimits.minor_max_flat) / 2, name: "Minor Max (flat)", color: "orange", dash: [2, 2], pos: "top"});
+            } else if (window.currentLimits.minor_max !== null) {
+                lines.push({rad: engineToDisplay(window.currentLimits.minor_max) / 2, name: "Minor Max", color: "orange", dash: [2, 2], pos: "top"});
+            }
+        }
+    }
+    
+
+    
+    let topPlaced = [];
+    lines.forEach(l => {
+        ctx.beginPath();
+        ctx.strokeStyle = l.color;
+        ctx.setLineDash(l.dash);
+        
+        let topY = 45;
+        let bottomY = canvas.height - 20;
+        
+        ctx.moveTo(mapX(l.rad), topY);
+        ctx.lineTo(mapX(l.rad), bottomY);
+        ctx.stroke();
+        
+        ctx.fillStyle = l.color === "#ccc" ? "#999" : l.color;
+        let w = ctx.measureText(l.name).width;
+        let x = mapX(l.rad);
+        
+        if (l.pos === "top") {
+            let placedY = topY - 6;
+            let overlapping = true;
+            while(overlapping) {
+                overlapping = false;
+                for (let other of topPlaced) {
+                    if (Math.abs(other.x - x) < (w/2 + other.w/2 + 5) && Math.abs(placedY - other.y) < 5) {
+                        overlapping = true;
+                        placedY -= 14;
+                    }
+                }
+            }
+            topPlaced.push({x: x, w: w, y: placedY});
+            ctx.fillText(l.name, x - w/2, placedY);
+        } else {
+            ctx.fillText(l.name, x - w/2, bottomY + 14);
+        }
+    });
+    
+    function drawIdeal() {
+        ctx.beginPath();
+        ctx.strokeStyle = "rgba(0, 0, 0, 0.8)";
+        ctx.fillStyle = "rgba(0, 0, 0, 0.05)";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([]);
+        
+        let PD_radius = pd / 2;
+        let R_sharp_root;
+        if (isFemale) {
+            R_sharp_root = PD_radius + (pitch / 4) / Math.tan(alpha);
+        } else {
+            R_sharp_root = PD_radius - (pitch / 4) / Math.tan(alpha);
+        }
+        
+        let z_start = -0.5 * pitch;
+        let z_end = 1.5 * pitch;
+        
+        let pts = [];
+        for (let z = z_start; z <= z_end + 0.001; z += pitch/50) {
+            let z_mod = z % pitch;
+            if (z_mod < 0) z_mod += pitch;
+            let z_from_root = z_mod > pitch/2 ? pitch - z_mod : z_mod;
+            
+            let X_sharp;
+            if (isFemale) {
+                X_sharp = R_sharp_root - z_from_root / Math.tan(alpha);
+            } else {
+                X_sharp = R_sharp_root + z_from_root / Math.tan(alpha);
+            }
+            
+            // Cap at minor/major to form the flats
+            let min_rad = Math.min(minor/2, major/2);
+            let maj_rad = Math.max(minor/2, major/2);
+            let X_ideal = Math.max(min_rad, Math.min(maj_rad, X_sharp));
+            
+            pts.push({x: X_ideal, z: z});
+        }
+        
+        ctx.moveTo(mapX(pts[0].x), mapZ(pts[0].z));
+        for (let i = 1; i < pts.length; i++) {
+            ctx.lineTo(mapX(pts[i].x), mapZ(pts[i].z));
+        }
+        
+        // Close polygon to shade the solid material
+        let X_solid = isFemale ? (major/2 + pitch) : (minor/2 - pitch);
+        ctx.lineTo(mapX(X_solid), mapZ(pts[pts.length-1].z));
+        ctx.lineTo(mapX(X_solid), mapZ(pts[0].z));
+        ctx.closePath();
+        
+        ctx.fill();
+        ctx.stroke();
+    }
+    
+    function getCutProfile(Rc) {
+        let pts = [];
+        let r_cutter = cutter / 2;
+        let X_steps = 200;
+        
+        let X_min_cut = isFemale ? (minor / 2) : ((minor / 2) - pitch*0.2);
+        let X_max_cut = isFemale ? ((major / 2) + pitch*0.2) : (major / 2);
+        
+        for (let i = 0; i <= X_steps; i++) {
+            let X = X_min_cut + (X_max_cut - X_min_cut) * (i / X_steps);
+            
+            let maxZ = -1000;
+            for (let theta = -Math.PI/2; theta <= Math.PI/2; theta += 0.01) {
+                let inside = X*X - 2*X*Rc*Math.cos(theta) + Rc*Rc;
+                if (inside < 0) continue;
+                let R_disk = Math.sqrt(inside);
+                if (R_disk <= r_cutter) {
+                    let z_tool = tipFlat/2 + (r_cutter - R_disk) * Math.tan(alpha);
+                    let Z = (pitch / (2 * Math.PI)) * theta + z_tool;
+                    if (Z > maxZ) maxZ = Z;
+                }
+            }
+            if (maxZ !== -1000) {
+                pts.push({x: X, z: maxZ});
+            }
+        }
+        return pts;
+    }
+    
+    function drawPath(pts, color, isDashed, fillStyle) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        if (isDashed) ctx.setLineDash([5, 5]);
+        else ctx.setLineDash([]);
+        
+        for (let tooth = 0; tooth <= 1; tooth++) {
+            ctx.beginPath();
+            let z_offset = tooth * pitch;
+            
+            for (let i = 0; i < pts.length; i++) {
+                let p = pts[i];
+                if (i === 0) ctx.moveTo(mapX(p.x), mapZ(p.z + z_offset));
+                else ctx.lineTo(mapX(p.x), mapZ(p.z + z_offset));
+            }
+            for (let i = pts.length - 1; i >= 0; i--) {
+                let p = pts[i];
+                ctx.lineTo(mapX(p.x), mapZ(-p.z + z_offset));
+            }
+            ctx.closePath();
+            
+            if (fillStyle) {
+                ctx.fillStyle = fillStyle;
+                ctx.fill();
+            }
+            ctx.stroke();
+        }
+    }
+    
+    // Draw center axis (Z=0)
+    ctx.beginPath();
+    ctx.strokeStyle = "#eee";
+    ctx.setLineDash([]);
+    ctx.moveTo(0, mapZ(0));
+    ctx.lineTo(canvas.width, mapZ(0));
+    ctx.stroke();
+    
+    drawIdeal();
+    
+    let ptsOvercut = getCutProfile(Rc_initial);
+    drawPath(ptsOvercut, "red", true, null);
+    
+    let ptsAdjusted = getCutProfile(Rc_opt);
+    drawPath(ptsAdjusted, "green", false, "rgba(0, 255, 0, 0.1)");
+}
+</script>
+
+</body>
+</html>
