@@ -117,6 +117,7 @@
             <option value="UNF">UNF</option>
             <option value="UNEF">UNEF</option>
             <option value="UN">UN</option>
+            <option value="UNR">UNR</option>
             <option value="UNS">UNS</option>
         </select>
     </div>
@@ -151,7 +152,16 @@
     <div class="section-heading">Cutter Geometry</div>
     
     <div class="simple-row"><label>Cutter Diameter:</label><span><input type="number" id="cutter" value="11.7" step="any"><span class="unit" id="unitLabelCutter">mm</span></span></div>
-    <div class="simple-row"><label>Tip Flat Width:</label><span><input type="number" id="tipFlat" value="0.13" step="any"><span class="unit" id="unitLabelFlat">mm</span></span></div>
+    <div class="simple-row">
+        <label>Tip Geometry:</label>
+        <select id="tipGeometry" onchange="handleTipGeometryChange()">
+            <option value="flat">Flat</option>
+            <option value="rounded">Rounded</option>
+            <option value="sharp">Sharp V</option>
+        </select>
+    </div>
+    <div class="simple-row" id="tipFlatRow"><label>Tip Flat Width:</label><span><input type="number" id="tipFlat" value="0.13" step="any"><span class="unit" id="unitLabelFlat">mm</span></span></div>
+    <div class="simple-row" id="tipRadiusRow" style="display:none;"><label>Tip Radius:</label><span><input type="number" id="tipRadius" value="0.125" step="any"><span class="unit" id="unitLabelRadius">mm</span></span></div>
     
     <button onclick="calculate()">Calculate Correction</button>
     
@@ -177,17 +187,21 @@
             <span>Standard (Overcut)</span>
         </div>
         <div style="display: flex; align-items: center; gap: 5px;">
-            <div style="width: 20px; height: 10px; background: rgba(0,255,0,0.1); border-top: 2px solid green; border-bottom: 2px solid green;"></div>
+            <div style="width: 20px; height: 10px; background: rgba(255,165,0,0.16); border-top: 2px dashed orange; border-bottom: 2px dashed orange;"></div>
             <span>Compensated Cut</span>
         </div>
 
         <div style="display: flex; align-items: center; gap: 5px;" id="legendTol">
-            <div style="width: 20px; height: 0px; border-top: 2px dotted orange;"></div>
+            <div style="width: 20px; height: 0px; border-top: 2px dotted blue;"></div>
             <span>Tolerance Limits</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 5px;" id="legendCutterTangency">
+            <div style="width: 10px; height: 10px; background: blue; border-radius: 50%;"></div>
+            <span>Root Radius Tangency</span>
         </div>
     </div>
     
-    <canvas id="profileCanvas" width="500" height="550" style="background:#fff; display:block; margin:auto;"></canvas>
+    <canvas id="profileCanvas" width="665" height="732" style="background:#fff; display:block; margin:auto;"></canvas>
 </div>
 </div>
 
@@ -419,7 +433,7 @@ function transferFusionThread() {
     document.getElementById("pitch").value = parseFloat((t.pitch * factor).toFixed(7));
 
     if (!isMetric) {
-        let seriesMatch = t.name.match(/\b(UNC|UNF|UNEF|UN|UNS)\b/);
+        let seriesMatch = t.name.match(/\b(UNC|UNF|UNEF|UNR|UN|UNS)\b/);
         document.getElementById("threadSeries").value = seriesMatch ? seriesMatch[1] : "UN";
     }
 
@@ -723,11 +737,39 @@ function handleUnitChange() {
     updateUnits(newUnit);
 }
 
+function handleTipGeometryChange() {
+    let type = document.getElementById("tipGeometry").value;
+    let isRounded = type === "rounded";
+    let isSharp = type === "sharp";
+    document.getElementById("tipFlatRow").style.display = (!isRounded && !isSharp) ? "grid" : "none";
+    document.getElementById("tipRadiusRow").style.display = isRounded ? "grid" : "none";
+    calculate();
+}
+
+function getTipGeometryInput() {
+    let type = document.getElementById("tipGeometry").value;
+    if (type === "rounded") {
+        return {
+            type: "rounded",
+            tipRadius: parseFloat(document.getElementById("tipRadius").value) || 0
+        };
+    }
+    if (type === "sharp") {
+        return {
+            type: "sharp"
+        };
+    }
+    return {
+        type: "flat",
+        tipFlat: parseFloat(document.getElementById("tipFlat").value) || 0
+    };
+}
+
 function updateUnits(newUnit) {
     if (newUnit !== currentUnit) {
         let factor = newUnit === "in" ? (1.0 / 25.4) : 25.4;
         
-        let inputsToConvert = ["nominal", "pd", "major", "minor", "pitch", "cutter", "tipFlat"];
+        let inputsToConvert = ["nominal", "pd", "major", "minor", "pitch", "cutter", "tipFlat", "tipRadius"];
         inputsToConvert.forEach(id => {
             let el = document.getElementById(id);
             if (el && el.value !== "") {
@@ -755,6 +797,7 @@ function updateUnitLabels() {
     document.getElementById("unitLabelPitch").innerText = document.getElementById("threadStandard").value === "unified" ? currentUnit + " (or 1/TPI)" : currentUnit;
     document.getElementById("unitLabelCutter").innerText = currentUnit;
     document.getElementById("unitLabelFlat").innerText = currentUnit;
+    document.getElementById("unitLabelRadius").innerText = currentUnit;
     
     let resUnits = document.getElementsByClassName("res_unit");
     for (let i = 0; i < resUnits.length; i++) {
@@ -794,12 +837,14 @@ function calculate() {
     let pd = parseFloat(document.getElementById('pd').value);
     let major = parseFloat(document.getElementById('major').value);
     let minor = parseFloat(document.getElementById('minor').value);
+    let nominal = parseFloat(document.getElementById('nominal').value);
     let pitch = parseFloat(document.getElementById('pitch').value);
     let cutter = parseFloat(document.getElementById('cutter').value);
     let threadAngle = 60.0;
-    let tipFlat = parseFloat(document.getElementById('tipFlat').value);
+    let tipGeometry = getTipGeometryInput();
+    let isRoundedTip = tipGeometry.type === "rounded";
     
-    let res = solveThreadMillOffset(isFemale, pd, major, minor, cutter, pitch, threadAngle, tipFlat);
+    let res = solveThreadMillOffset(isFemale, pd, major, minor, cutter, pitch, threadAngle, tipGeometry);
     
     console.log("Calculation Results:", res);
     
@@ -837,9 +882,16 @@ function calculate() {
         
         if (window.currentLimits && window.currentLimits.minor_min !== null && window.currentLimits.minor_max !== null) {
             let limitMin = engineToDisplay(window.currentLimits.minor_min);
-            let limitMax = window.currentLimits.minor_max_flat ? engineToDisplay(window.currentLimits.minor_max_flat) : engineToDisplay(window.currentLimits.minor_max);
+            let limitMax = (!isRoundedTip && window.currentLimits.minor_max_flat) ? engineToDisplay(window.currentLimits.minor_max_flat) : engineToDisplay(window.currentLimits.minor_max);
+            let radiusOk = true;
+            if (isRoundedTip && window.currentLimits.root_radius_min !== undefined) {
+                radiusOk = tipGeometry.tipRadius >= engineToDisplay(window.currentLimits.root_radius_min);
+            }
+            let isUnified = document.getElementById("threadStandard").value === "unified";
+            let isUNR = isUnified && document.getElementById("threadSeries").value === "UNR";
+            if (isUNR && !isRoundedTip) radiusOk = false;
             
-            if (res.resulting_minor >= limitMin && res.resulting_minor <= limitMax) {
+            if (res.resulting_minor >= limitMin && res.resulting_minor <= limitMax && radiusOk) {
                 document.getElementById('res_diff').innerHTML += ' <span style="color:green; margin-left:10px;">[IN SPEC]</span>';
             } else {
                 document.getElementById('res_diff').innerHTML += ' <span style="color:red; font-weight:bold; margin-left:10px;">[OUT OF SPEC]</span>';
@@ -849,19 +901,19 @@ function calculate() {
     
     document.getElementById("canvasContainer").style.display = 'block';
     
-    let alpha = (threadAngle / 2) * Math.PI / 180;
-    let cutter_pd = cutter - (pitch/2 - tipFlat) / Math.tan(alpha);
-    let Rc_initial = isFemale ? (pd - cutter_pd) / 2 : (pd + cutter_pd) / 2;
+    let Rc_initial = res.Rc_initial;
     
-    drawProfiles(res.Rc_opt, Rc_initial, isFemale, pd, major, minor, cutter, pitch, threadAngle, tipFlat);
+    drawProfiles(res.Rc_opt, Rc_initial, isFemale, pd, major, minor, nominal, cutter, pitch, threadAngle, tipGeometry);
 }
 
-function drawProfiles(Rc_opt, Rc_initial, isFemale, pd, major, minor, cutter, pitch, threadAngle, tipFlat) {
+function drawProfiles(Rc_opt, Rc_initial, isFemale, pd, major, minor, nominal, cutter, pitch, threadAngle, tipGeometry) {
     let canvas = document.getElementById("profileCanvas");
     let ctx = canvas.getContext("2d");
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    document.getElementById("legendCutterTangency").style.display = tipGeometry.type === "rounded" ? "flex" : "none";
     
     let alpha = (threadAngle / 2) * Math.PI / 180;
+    let cutterProfile = normalizeCutterGeometry(cutter, pitch, threadAngle, tipGeometry);
     
     // 1:1 Aspect Ratio Mapping
     let X_range = Math.abs(major/2 - minor/2) + 1.2 * pitch; 
@@ -902,18 +954,18 @@ function drawProfiles(Rc_opt, Rc_initial, isFemale, pd, major, minor, cutter, pi
     // Add Tolerance Bands for the Cut Target
     if (window.currentLimits) {
         if (isFemale) {
-            lines.push({rad: engineToDisplay(window.currentLimits.major_min) / 2, name: "Major Min", color: "orange", dash: [2, 2], pos: "top"});
+            lines.push({rad: engineToDisplay(window.currentLimits.major_min) / 2, name: "Major Min", color: "blue", dash: [2, 2], pos: "top"});
             if (window.currentLimits.major_max !== null && window.currentLimits.major_max !== undefined) {
-                lines.push({rad: engineToDisplay(window.currentLimits.major_max) / 2, name: "Major Max", color: "orange", dash: [2, 2], pos: "top"});
+                lines.push({rad: engineToDisplay(window.currentLimits.major_max) / 2, name: "Major Max", color: "blue", dash: [2, 2], pos: "top"});
             }
         } else {
             if (window.currentLimits.minor_min !== null) {
-                lines.push({rad: engineToDisplay(window.currentLimits.minor_min) / 2, name: "Minor Min", color: "orange", dash: [2, 2], pos: "top"});
+                lines.push({rad: engineToDisplay(window.currentLimits.minor_min) / 2, name: "Minor Min", color: "blue", dash: [2, 2], pos: "top"});
             }
-            if (window.currentLimits.minor_max_flat) {
-                lines.push({rad: engineToDisplay(window.currentLimits.minor_max_flat) / 2, name: "Minor Max (flat)", color: "orange", dash: [2, 2], pos: "top"});
+            if (cutterProfile.type !== "rounded" && window.currentLimits.minor_max_flat) {
+                lines.push({rad: engineToDisplay(window.currentLimits.minor_max_flat) / 2, name: "Minor Max (flat)", color: "blue", dash: [2, 2], pos: "top"});
             } else if (window.currentLimits.minor_max !== null) {
-                lines.push({rad: engineToDisplay(window.currentLimits.minor_max) / 2, name: "Minor Max", color: "orange", dash: [2, 2], pos: "top"});
+                lines.push({rad: engineToDisplay(window.currentLimits.minor_max) / 2, name: "Minor Max", color: "blue", dash: [2, 2], pos: "top"});
             }
         }
     }
@@ -955,7 +1007,7 @@ function drawProfiles(Rc_opt, Rc_initial, isFemale, pd, major, minor, cutter, pi
             ctx.fillText(l.name, x - w/2, bottomY + 14);
         }
     });
-    
+
     function drawIdeal() {
         ctx.beginPath();
         ctx.strokeStyle = "rgba(0, 0, 0, 0.8)";
@@ -1027,7 +1079,7 @@ function drawProfiles(Rc_opt, Rc_initial, isFemale, pd, major, minor, cutter, pi
                 if (inside < 0) continue;
                 let R_disk = Math.sqrt(inside);
                 if (R_disk <= r_cutter) {
-                    let z_tool = tipFlat/2 + (r_cutter - R_disk) * Math.tan(alpha);
+                    let z_tool = cutterProfile.axialHalfWidthAtDepth(r_cutter - R_disk);
                     let Z = (pitch / (2 * Math.PI)) * theta + z_tool;
                     if (Z > maxZ) maxZ = Z;
                 }
@@ -1067,6 +1119,48 @@ function drawProfiles(Rc_opt, Rc_initial, isFemale, pd, major, minor, cutter, pi
             ctx.stroke();
         }
     }
+
+    function getCutterTangentDepth() {
+        if (cutterProfile.type === "rounded") {
+            return Math.max(0, cutterProfile.tipRadius * (1 - Math.sin(alpha)));
+        }
+        return Math.max(0, (cutterProfile.tipFlat / 2) / Math.tan(alpha));
+    }
+
+    function getProfileZAtX(pts, targetX) {
+        if (!pts.length) return null;
+        for (let i = 1; i < pts.length; i++) {
+            let a = pts[i - 1];
+            let b = pts[i];
+            if ((a.x <= targetX && targetX <= b.x) || (b.x <= targetX && targetX <= a.x)) {
+                let denom = b.x - a.x;
+                if (Math.abs(denom) < 1e-12) return a.z;
+                let t = (targetX - a.x) / denom;
+                return a.z + (b.z - a.z) * t;
+            }
+        }
+        return null;
+    }
+
+    function drawTangentMarkers(pts, Rc) {
+        if (cutterProfile.type !== "rounded") return;
+        let tangentDepth = getCutterTangentDepth();
+        let tangentRad = isFemale ? (Rc + cutter / 2 - tangentDepth) : (Rc - cutter / 2 + tangentDepth);
+        let z = getProfileZAtX(pts, tangentRad);
+        if (z === null) return;
+
+        ctx.save();
+        ctx.fillStyle = "blue";
+        for (let tooth = 0; tooth <= 1; tooth++) {
+            let zOffset = tooth * pitch;
+            [[z + zOffset], [-z + zOffset]].forEach(item => {
+                ctx.beginPath();
+                ctx.arc(mapX(tangentRad), mapZ(item[0]), 2, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+        ctx.restore();
+    }
     
     // Draw center axis (Z=0)
     ctx.beginPath();
@@ -1082,7 +1176,8 @@ function drawProfiles(Rc_opt, Rc_initial, isFemale, pd, major, minor, cutter, pi
     drawPath(ptsOvercut, "red", true, null);
     
     let ptsAdjusted = getCutProfile(Rc_opt);
-    drawPath(ptsAdjusted, "green", false, "rgba(0, 255, 0, 0.1)");
+    drawPath(ptsAdjusted, "orange", true, "rgba(255, 165, 0, 0.16)");
+    drawTangentMarkers(ptsAdjusted, Rc_opt);
 }
 </script>
 

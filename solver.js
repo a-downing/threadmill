@@ -1,12 +1,66 @@
-function solveThreadMillOffset(isFemale, pd, major, minor, cutter, pitch, threadAngle, tipFlat, iterations=10) {
+function normalizeCutterGeometry(cutter, pitch, threadAngle, tipGeometry) {
+    const alpha = (threadAngle / 2) * Math.PI / 180;
+    const P = pitch;
+    const geometry = (typeof tipGeometry === 'object' && tipGeometry !== null) ? tipGeometry : { type: 'flat', tipFlat: tipGeometry };
+    const type = geometry.type === 'rounded' ? 'rounded' : (geometry.type === 'sharp' ? 'sharp' : 'flat');
+
+    function axialHalfWidthAtDepth(depth) {
+        if (type === 'rounded') {
+            const tipRadius = Math.max(0, geometry.tipRadius || 0);
+            if (tipRadius <= 0) return depth * Math.tan(alpha);
+
+            const tangentDepth = tipRadius * (1 - Math.sin(alpha));
+            const tangentHalfWidth = tipRadius * Math.cos(alpha);
+            if (depth <= tangentDepth) {
+                const inside = Math.max(0, tipRadius * tipRadius - Math.pow(depth - tipRadius, 2));
+                return Math.sqrt(inside);
+            }
+            return tangentHalfWidth + (depth - tangentDepth) * Math.tan(alpha);
+        }
+
+        if (type === 'sharp') return depth * Math.tan(alpha);
+        return (geometry.tipFlat || 0) / 2 + depth * Math.tan(alpha);
+    }
+
+    function depthAtAxialHalfWidth(targetHalfWidth) {
+        if (type === 'rounded') {
+            const tipRadius = Math.max(0, geometry.tipRadius || 0);
+            if (tipRadius <= 0) return targetHalfWidth / Math.tan(alpha);
+
+            const tangentDepth = tipRadius * (1 - Math.sin(alpha));
+            const tangentHalfWidth = tipRadius * Math.cos(alpha);
+            if (targetHalfWidth <= tangentHalfWidth) {
+                return tipRadius - Math.sqrt(Math.max(0, tipRadius * tipRadius - targetHalfWidth * targetHalfWidth));
+            }
+            return tangentDepth + (targetHalfWidth - tangentHalfWidth) / Math.tan(alpha);
+        }
+
+        if (type === 'sharp') return targetHalfWidth / Math.tan(alpha);
+        return (targetHalfWidth - (geometry.tipFlat || 0) / 2) / Math.tan(alpha);
+    }
+
+    const pitchDepth = depthAtAxialHalfWidth(P / 4);
+    const cutterPitchDiameter = cutter - 2 * pitchDepth;
+
+    return {
+        type: type,
+        cutterPitchDiameter: cutterPitchDiameter,
+        axialHalfWidthAtDepth: axialHalfWidthAtDepth,
+        depthAtAxialHalfWidth: depthAtAxialHalfWidth,
+        tipFlat: geometry.tipFlat || 0,
+        tipRadius: geometry.tipRadius || 0
+    };
+}
+
+function solveThreadMillOffset(isFemale, pd, major, minor, cutter, pitch, threadAngle, tipGeometry, iterations=10) {
     const alpha = (threadAngle / 2) * Math.PI / 180;
     const P = pitch;
     const R_pd = pd / 2;
-    const r_cutter = cutter / 2;
     
     // Calculate the Cutter's Pitch Diameter
     // (The diameter on the cutter where the tooth width is exactly P/2)
-    const cutter_pd = cutter - (P/2 - tipFlat) / Math.tan(alpha);
+    const cutterProfile = normalizeCutterGeometry(cutter, pitch, threadAngle, tipGeometry);
+    const cutter_pd = cutterProfile.cutterPitchDiameter;
     
     // Initial Orbit Radius (Rc) based on Pitch Diameter Alignment
     // Fusion 360 does not offset the tool's tip to the major diameter; 
@@ -60,7 +114,8 @@ function solveThreadMillOffset(isFemale, pd, major, minor, cutter, pitch, thread
         fusion_auto_pdo: fusion_auto_pdo,
         pdo: pdo,
         resulting_major: resulting_major,
-        resulting_minor: resulting_minor
+        resulting_minor: resulting_minor,
+        cutter_pitch_diameter: cutter_pd
     };
 }
 
