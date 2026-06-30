@@ -3,7 +3,8 @@
 <head>
     <title>Thread Mill Offset Calculator</title>
     <style>
-        body { font-family: monospace; max-width: 1800px; margin: 20px auto; background: #eee; }
+        body { box-sizing: border-box; font-family: monospace; width: calc(100% - 40px); margin: 20px auto; background: #eee; }
+        *, *::before, *::after { box-sizing: inherit; }
         .container { background: white; padding: 20px; border: 1px solid #ccc; margin-bottom: 20px; }
         h1 { font-size: 1.5em; border-bottom: 1px solid #000; padding-bottom: 5px; }
         h2 { font-size: 1.2em; margin-bottom: 10px; }
@@ -15,24 +16,43 @@
         input[type="range"] { width: 240px; vertical-align: middle; }
         select { margin-bottom: 5px; min-width: 180px; max-width: 420px;}
         button { padding: 5px 15px; margin-top: 10px; cursor: pointer; }
-        .result-box { box-sizing: border-box; min-width: 960px; margin-top: 20px; padding: 10px; background: #f9f9f9; border: 1px solid #ddd; }
-        .result-row { display: flex; align-items: baseline; gap: 4px; margin-bottom: 5px; white-space: nowrap; }
-        .result-label { flex: 0 0 340px; font-weight: bold; }
+        .workspace { display: flex; flex-wrap: wrap; gap: 20px; align-items: stretch; }
+        .calculator-panel { flex: 1 1 1040px; min-width: 0; margin-bottom: 0; }
+        .visualization-panel { flex: 1 1 520px; min-width: min(100%, 420px); margin-bottom: 0; }
+        .result-box { width: 100%; min-width: 0; margin-top: 20px; padding: 10px; background: #f9f9f9; border: 1px solid #ddd; }
+        .result-row { display: flex; align-items: baseline; gap: 4px; margin-bottom: 5px; white-space: normal; }
+        .result-label { flex: 0 1 340px; min-width: 220px; font-weight: bold; }
         hr { margin: 15px 0; }
         .unit { margin-left: 5px; color: #555; }
-        .limit-text { font-size:0.85em; color:#666; }
+        .limit-text { font-size:0.85em; color:#666; line-height: 1.25; }
         .field-note { font-size:0.85em; color:#666; margin-left: 10px; }
-        .form-row { display: grid; grid-template-columns: minmax(420px, 1fr) 130px 26px minmax(260px, 1fr) 120px; align-items: baseline; column-gap: 8px; margin-bottom: 5px; white-space: nowrap; }
+        .form-row { display: grid; grid-template-columns: minmax(420px, 1fr) 130px 26px minmax(260px, 1fr) 120px; align-items: baseline; column-gap: 8px; margin-bottom: 5px; }
         .form-row label { width: auto; margin-bottom: 0; }
         .form-row input[type="number"] { margin-bottom: 0; }
         .form-row select { margin-bottom: 0; }
-        .label-with-limits { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+        .label-with-limits { display: flex; align-items: baseline; gap: 10px; min-width: 0; white-space: nowrap; }
         .label-with-limits label { flex: 0 0 auto; }
-        .label-with-limits .limit-text { overflow: visible; }
+        .label-with-limits .limit-text { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+        .limit-extra { display: block; margin-top: 2px; }
         .simple-row { display: grid; grid-template-columns: 220px 180px 1fr; align-items: baseline; column-gap: 6px; margin-bottom: 5px; white-space: nowrap; }
         .simple-row label { width: auto; margin-bottom: 0; }
         .simple-row input[type="number"] { margin-bottom: 0; }
         .simple-row select { margin-bottom: 0; }
+        #profileCanvas { background:#fff; display:block; width: 100%; max-width: 665px; height: auto; margin:auto; }
+        @media (max-width: 1120px) {
+            body { width: calc(100% - 24px); margin: 12px auto; }
+            .container { padding: 14px; }
+            .form-row { grid-template-columns: minmax(300px, 1fr) 130px 26px minmax(180px, 0.7fr) 82px; }
+            .label-with-limits { gap: 6px; }
+            .result-label { flex-basis: 300px; }
+        }
+        @media (max-width: 760px) {
+            .form-row, .simple-row { grid-template-columns: 1fr; white-space: normal; row-gap: 4px; }
+            .form-row input[type="range"], input[type="range"] { width: 100%; }
+            select { max-width: 100%; }
+            .result-row { display: block; }
+            .result-label { display: block; min-width: 0; }
+        }
     </style>
 </head>
 <body>
@@ -74,8 +94,8 @@
     <button onclick="transferFusionThread()">Transfer Selected Thread to Calculator</button>
 </div>
 
-<div style="display: flex; gap: 20px; align-items: stretch;">
-    <div class="container" style="flex: 0 0 1120px; margin-bottom: 0;">
+<div class="workspace">
+    <div class="container calculator-panel">
         <h1>Thread Mill Offset Calculator</h1>
     
     <div class="simple-row">
@@ -107,7 +127,7 @@
         <span><input type="number" id="nominal" value="14" step="any" onchange="handleStandardInputsChanged()"><span class="unit" id="unitLabelNominal">mm</span></span>
     </div>
     <div class="simple-row">
-        <label>Pitch:</label>
+        <label id="pitchInputLabel">Pitch:</label>
         <span><input type="number" id="pitch" value="2.0" step="any" onchange="handleStandardInputsChanged()"><span class="unit" id="unitLabelPitch">mm</span></span>
     </div>
     <div class="simple-row" id="seriesRow" style="display:none;">
@@ -129,7 +149,7 @@
     
     <div class="form-row">
         <span class="label-with-limits"><label>Pitch Diameter:</label><span id="pdLimits" class="limit-text"></span></span>
-        <input type="number" id="pd" value="12.8069" step="any"><span class="unit" id="unitLabelPD">mm</span>
+        <input type="number" id="pd" value="12.8069" step="any" onchange="handleThreadValueChanged()"><span class="unit" id="unitLabelPD">mm</span>
         <input type="range" id="pdPosition" min="0" max="1" step="0.001" value="0.5" oninput="handleDiameterSlider('pd')">
         <input type="number" id="pdPositionValue" value="0.5" min="0" max="1" step="0.001" onchange="handleDiameterPositionInput('pd')">
     </div>
@@ -151,7 +171,7 @@
 
     <div class="section-heading">Cutter Geometry</div>
     
-    <div class="simple-row"><label>Cutter Diameter:</label><span><input type="number" id="cutter" value="11.7" step="any"><span class="unit" id="unitLabelCutter">mm</span></span></div>
+    <div class="simple-row"><label>Cutter Diameter:</label><span><input type="number" id="cutter" value="11.7" step="any" onchange="handleToolInputChanged()"><span class="unit" id="unitLabelCutter">mm</span></span></div>
     <div class="simple-row">
         <label>Tip Geometry:</label>
         <select id="tipGeometry" onchange="handleTipGeometryChange()">
@@ -160,8 +180,8 @@
             <option value="sharp">Sharp V</option>
         </select>
     </div>
-    <div class="simple-row" id="tipFlatRow"><label>Tip Flat Width:</label><span><input type="number" id="tipFlat" value="0.13" step="any"><span class="unit" id="unitLabelFlat">mm</span></span></div>
-    <div class="simple-row" id="tipRadiusRow" style="display:none;"><label>Tip Radius:</label><span><input type="number" id="tipRadius" value="0.125" step="any"><span class="unit" id="unitLabelRadius">mm</span></span></div>
+    <div class="simple-row" id="tipFlatRow"><label>Tip Flat Width:</label><span><input type="number" id="tipFlat" value="0.13" step="any" onchange="handleToolInputChanged()"><span class="unit" id="unitLabelFlat">mm</span></span></div>
+    <div class="simple-row" id="tipRadiusRow" style="display:none;"><label>Tip Radius:</label><span><input type="number" id="tipRadius" value="0.125" step="any" onchange="handleToolInputChanged()"><span class="unit" id="unitLabelRadius">mm</span></span></div>
     
     <button onclick="calculate()">Calculate Correction</button>
     
@@ -173,7 +193,7 @@
     </div>
 </div>
 
-<div class="container" id="canvasContainer" style="display:none; flex: 1; margin-bottom: 0;">
+<div class="container visualization-panel" id="canvasContainer" style="display:none;">
     <h2>Thread Form Visualization</h2>
     <p style="font-size: 0.9em; color: #555;">Cross-section of the thread groove. The dashed red line shows the axial overcut from a standard toolpath.</p>
     
@@ -201,7 +221,7 @@
         </div>
     </div>
     
-    <canvas id="profileCanvas" width="665" height="732" style="background:#fff; display:block; margin:auto;"></canvas>
+    <canvas id="profileCanvas" width="665" height="732"></canvas>
 </div>
 </div>
 
@@ -430,7 +450,9 @@ function transferFusionThread() {
     document.getElementById("threadStandard").value = standard;
     document.getElementById("isFemale").value = t.gender === "internal" ? "true" : "false";
     document.getElementById("nominal").value = parseFloat((parseNominalSize(t.size) * factor).toFixed(7));
-    document.getElementById("pitch").value = parseFloat((t.pitch * factor).toFixed(7));
+    document.getElementById("pitch").value = standard === "unified"
+        ? parseFloat((1.0 / t.pitch).toFixed(4))
+        : parseFloat((t.pitch * factor).toFixed(7));
 
     if (!isMetric) {
         let seriesMatch = t.name.match(/\b(UNC|UNF|UNEF|UNR|UN|UNS)\b/);
@@ -452,7 +474,8 @@ function transferFusionThread() {
         document.getElementById("pd").value = parseFloat(fusionPd.toFixed(currentUnit === "in" ? 6 : 4));
 
         if (t.gender === "internal") {
-            let minorPos = positionFromRange(fusionMinor, engineToDisplay(limits.minor_min), engineToDisplay(limits.minor_max));
+            let minorUpper = limits.minor_max_round !== undefined ? limits.minor_max_round : limits.minor_max;
+            let minorPos = positionFromRange(fusionMinor, engineToDisplay(limits.minor_min), engineToDisplay(minorUpper));
             setPositionControls("minor", minorPos);
             document.getElementById("minor").value = parseFloat(fusionMinor.toFixed(currentUnit === "in" ? 6 : 4));
             setDiameterFieldMode("major", false, fusionMajor);
@@ -472,6 +495,26 @@ function transferFusionThread() {
 
 function getEngineUnits() {
     return document.getElementById("threadStandard").value === "metric" ? "mm" : "in";
+}
+
+function getPitchInputValue() {
+    let val = parseFloat(document.getElementById("pitch").value);
+    return isFinite(val) && val > 0 ? val : null;
+}
+
+function getUnifiedTpiFromInput() {
+    let val = getPitchInputValue();
+    return val === null ? null : Math.round(val);
+}
+
+function getDisplayPitchFromInput() {
+    let standard = document.getElementById("threadStandard").value;
+    let val = getPitchInputValue();
+    if (val === null) return null;
+    if (standard === "unified") {
+        return currentUnit === "in" ? 1.0 / val : 25.4 / val;
+    }
+    return val;
 }
 
 function displayToEngine(val) {
@@ -520,17 +563,18 @@ function getClassCandidates() {
 function getLimitsForClass(threadClass) {
     let standard = document.getElementById("threadStandard").value;
     let nominal = displayToEngine(parseFloat(document.getElementById("nominal").value));
-    let pitch = displayToEngine(parseFloat(document.getElementById("pitch").value));
-    if (!isFinite(nominal) || !isFinite(pitch) || nominal <= 0 || pitch <= 0) return null;
+    let pitchInput = getPitchInputValue();
+    if (!isFinite(nominal) || nominal <= 0 || pitchInput === null) return null;
 
     if (standard === "metric") {
         if (typeof getThreadLimits === "undefined") return null;
+        let pitch = displayToEngine(pitchInput);
         return getThreadLimits(nominal, pitch, threadClass);
     }
 
     if (typeof getUnifiedThreadLimits === "undefined") return null;
-    let tpi = Math.round(1.0 / pitch);
-    if (Math.abs((1.0 / pitch) - tpi) > 0.0001) return null;
+    let tpi = getUnifiedTpiFromInput();
+    if (tpi === null || Math.abs(pitchInput - tpi) > 0.0001) return null;
     return getUnifiedThreadLimits(nominal, tpi, threadClass, document.getElementById("threadSeries").value);
 }
 
@@ -578,19 +622,25 @@ function handleStandardChange(shouldCalculate = true) {
     let engineUnit = getEngineUnits();
     document.getElementById("seriesRow").style.display = standard === "unified" ? "grid" : "none";
     document.getElementById("unitLabelNominal").innerText = currentUnit;
-    document.getElementById("unitLabelPitch").innerText = standard === "unified" ? currentUnit + " (or 1/TPI)" : currentUnit;
+    document.getElementById("pitchInputLabel").innerText = standard === "unified" ? "Threads Per Inch:" : "Pitch:";
+    document.getElementById("unitLabelPitch").innerText = standard === "unified" ? "TPI" : currentUnit;
+    document.getElementById("pitch").step = standard === "unified" ? "1" : "any";
+    document.getElementById("pitch").min = "0";
     populateClassOptions();
     updateLimitsFromInputs(true);
+    saveThreadSettings();
     if (shouldCalculate) calculate();
 }
 
 function handleStandardInputsChanged() {
+    saveThreadSettings();
     populateClassOptions();
     updateLimitsFromInputs(true);
     calculate();
 }
 
 function handleClassChanged() {
+    saveThreadSettings();
     updateLimitsFromInputs(true);
     calculate();
 }
@@ -627,10 +677,63 @@ function setDiameterFieldMode(kind, editable, value) {
     let currentValue = value !== undefined ? value : (existing ? parseFloat(existing.value) : 0);
     let dec = currentUnit === "in" ? 6 : 4;
     if (editable) {
-        field.innerHTML = '<input type="number" id="' + kind + '" value="' + parseFloat(currentValue.toFixed(dec)) + '" step="any">';
+        field.innerHTML = '<input type="number" id="' + kind + '" value="' + parseFloat(currentValue.toFixed(dec)) + '" step="any" onchange="handleThreadValueChanged()">';
     } else {
         field.innerHTML = '<input type="hidden" id="' + kind + '" value="' + parseFloat(currentValue.toFixed(dec)) + '"><span class="field-note">' + formatLen(currentValue) + ' calculated</span>';
     }
+}
+
+function handleThreadValueChanged() {
+    saveThreadSettings();
+    updateLimitsFromInputs(false);
+    calculate();
+}
+
+function getExternalMinorEnvelope(limits, tipGeometry) {
+    if (!limits) return null;
+    const type = tipGeometry ? tipGeometry.type : document.getElementById("tipGeometry").value;
+    const isRounded = type === "rounded";
+    const isUnified = document.getElementById("threadStandard").value === "unified";
+    const isUNR = isUnified && document.getElementById("threadSeries").value === "UNR";
+    let min = limits.minor_min;
+    let minLabel = "Min";
+    let max = limits.minor_max_flat || limits.minor_max_round || limits.minor_max;
+    let maxLabel = limits.minor_max_flat && !isRounded ? "Max flat" : (limits.minor_max_round !== undefined ? "Max round" : "Max");
+    let radiusOk = true;
+    let messages = [];
+
+    if (isRounded) {
+        const radius = tipGeometry ? tipGeometry.tipRadius : parseFloat(document.getElementById("tipRadius").value);
+        // ASME B1.1 does not define a minimum minor diameter for external threads.
+        // The lower bound is governed purely by the tool's minimum root radius.
+        min = null;
+        if (limits.minor_max_round !== undefined) {
+            max = limits.minor_max_round;
+            maxLabel = "Max round";
+        }
+        if (limits.root_radius_min !== undefined && isFinite(radius)) {
+            const minRadius = engineToDisplay(limits.root_radius_min);
+            radiusOk = radius >= minRadius;
+            if (!radiusOk) messages.push(`tool radius below min ${formatLen(minRadius)}`);
+        }
+    } else {
+        if (isUNR) {
+            radiusOk = false;
+            messages.push("UNR requires rounded root");
+        }
+        if (limits.minor_max_flat !== undefined) {
+            max = limits.minor_max_flat;
+            maxLabel = "Max flat";
+        }
+    }
+
+    return { min, max, minLabel, maxLabel, calculatedMinor: messages.calculatedMinor, radiusOk, messages };
+}
+
+function formatLimitRange(min, max, minLabel = "Min", maxLabel = "Max") {
+    const minText = min === null || min === undefined || !isFinite(min) ? "N/A" : formatLen(engineToDisplay(min));
+    const maxText = max === null || max === undefined || !isFinite(max) ? "N/A" : formatLen(engineToDisplay(max));
+    return `[${minLabel}: ${minText}, ${maxLabel}: ${maxText}]`;
 }
 
 function applyDiameterSlider(kind) {
@@ -642,7 +745,8 @@ function applyDiameterSlider(kind) {
     if (kind === "pd") {
         setControlledDiameter("pd", engineToDisplay(limits.pitch_min), engineToDisplay(limits.pitch_max), pos);
     } else if (kind === "minor" && isFemale) {
-        setControlledDiameter("minor", engineToDisplay(limits.minor_min), engineToDisplay(limits.minor_max), pos);
+        const minorUpper = limits.minor_max_round !== undefined ? limits.minor_max_round : limits.minor_max;
+        setControlledDiameter("minor", engineToDisplay(limits.minor_min), engineToDisplay(minorUpper), pos);
     } else if (kind === "major" && !isFemale) {
         setControlledDiameter("major", engineToDisplay(limits.major_min), engineToDisplay(limits.major_max), pos);
     }
@@ -652,6 +756,7 @@ function handleDiameterSlider(kind) {
     document.getElementById(kind + "PositionValue").value = parseFloat(document.getElementById(kind + "Position").value).toFixed(3);
     updateLimitsFromInputs(false);
     applyDiameterSlider(kind);
+    saveThreadSettings();
     calculate();
 }
 
@@ -659,6 +764,7 @@ function handleDiameterPositionInput(kind) {
     setPositionControls(kind, parseFloat(document.getElementById(kind + "PositionValue").value));
     updateLimitsFromInputs(false);
     applyDiameterSlider(kind);
+    saveThreadSettings();
     calculate();
 }
 
@@ -706,12 +812,26 @@ function updateLimitsFromInputs(applySliders) {
     let majorMax = engineToDisplay(limits.major_max);
     let pitchMin = engineToDisplay(limits.pitch_min);
     let pitchMax = engineToDisplay(limits.pitch_max);
-    let minorMin = engineToDisplay(limits.minor_min);
-    let minorMax = engineToDisplay(limits.minor_max_flat || limits.minor_max);
+    let tipGeometry = getTipGeometryInput();
+    let minorEnvelope = isFemale ? null : getExternalMinorEnvelope(limits, tipGeometry);
+    let minorMin = isFemale && limits.minor_min !== null && limits.minor_min !== undefined ? engineToDisplay(limits.minor_min) : null;
+    let minorMax = isFemale
+        ? engineToDisplay(limits.minor_max)
+        : (minorEnvelope && minorEnvelope.max !== null && minorEnvelope.max !== undefined ? engineToDisplay(minorEnvelope.max) : null);
 
     document.getElementById("majorLimits").innerText = `[Min: ${formatLen(majorMin)}, Max: ${formatLen(majorMax)}]`;
     document.getElementById("pdLimits").innerText = `[Min: ${formatLen(pitchMin)}, Max: ${formatLen(pitchMax)}]`;
-    document.getElementById("minorLimits").innerText = `[Min: ${formatLen(minorMin)}, Max: ${formatLen(minorMax)}]`;
+    let minorText = isFemale
+        ? `[Min: ${formatLen(minorMin)}, Max: ${formatLen(minorMax)}]`
+        : formatLimitRange(minorEnvelope.min, minorEnvelope.max, minorEnvelope.minLabel, minorEnvelope.maxLabel);
+    if (!isFemale && limits.root_radius_min !== undefined) {
+        minorText += `<span class="limit-extra">Root R min: ${formatLen(engineToDisplay(limits.root_radius_min))}`;
+        if (limits.root_radius_basic !== undefined) {
+            minorText += `, basic: ${formatLen(engineToDisplay(limits.root_radius_basic))}`;
+        }
+        minorText += `</span>`;
+    }
+    document.getElementById("minorLimits").innerHTML = minorText;
 
     let targetKind = isFemale ? "minor" : "major";
     if (applySliders || !document.getElementById(targetKind + "Position")) {
@@ -738,12 +858,108 @@ function handleUnitChange() {
 }
 
 function handleTipGeometryChange() {
+    updateTipGeometryRows();
+    saveToolSettings();
+    calculate();
+}
+
+function updateTipGeometryRows() {
     let type = document.getElementById("tipGeometry").value;
     let isRounded = type === "rounded";
     let isSharp = type === "sharp";
     document.getElementById("tipFlatRow").style.display = (!isRounded && !isSharp) ? "grid" : "none";
     document.getElementById("tipRadiusRow").style.display = isRounded ? "grid" : "none";
+}
+
+function handleToolInputChanged() {
+    saveToolSettings();
+    updateLimitsFromInputs(false);
     calculate();
+}
+
+function saveToolSettings() {
+    const settings = {
+        unit: currentUnit,
+        cutter: parseFloat(document.getElementById("cutter").value),
+        tipGeometry: document.getElementById("tipGeometry").value,
+        tipFlat: parseFloat(document.getElementById("tipFlat").value),
+        tipRadius: parseFloat(document.getElementById("tipRadius").value)
+    };
+    localStorage.setItem("toolSettings", JSON.stringify(settings));
+}
+
+function loadToolSettings() {
+    const saved = localStorage.getItem("toolSettings");
+    if (!saved) return;
+    try {
+        const settings = JSON.parse(saved);
+        const savedUnit = settings.unit || currentUnit;
+        const factor = savedUnit === currentUnit ? 1.0 : (savedUnit === "in" ? 25.4 : 1.0 / 25.4);
+        if (isFinite(settings.cutter)) document.getElementById("cutter").value = parseFloat((settings.cutter * factor).toFixed(7));
+        if (settings.tipGeometry) document.getElementById("tipGeometry").value = settings.tipGeometry;
+        if (isFinite(settings.tipFlat)) document.getElementById("tipFlat").value = parseFloat((settings.tipFlat * factor).toFixed(7));
+        if (isFinite(settings.tipRadius)) document.getElementById("tipRadius").value = parseFloat((settings.tipRadius * factor).toFixed(7));
+    } catch(e) {
+        console.log("Error loading tool settings", e);
+    }
+}
+
+function saveThreadSettings() {
+    const settings = {
+        unit: currentUnit,
+        displayUnit: document.getElementById("displayUnit").value,
+        threadStandard: document.getElementById("threadStandard").value,
+        isFemale: document.getElementById("isFemale").value,
+        nominal: parseFloat(document.getElementById("nominal").value),
+        pitch: parseFloat(document.getElementById("pitch").value),
+        threadSeries: document.getElementById("threadSeries").value,
+        threadClass: document.getElementById("threadClass").value,
+        pd: parseFloat(document.getElementById("pd").value),
+        major: parseFloat(document.getElementById("major").value),
+        minor: parseFloat(document.getElementById("minor").value),
+        pdPosition: parseFloat(document.getElementById("pdPosition").value),
+        majorPosition: document.getElementById("majorPosition") ? parseFloat(document.getElementById("majorPosition").value) : null,
+        minorPosition: document.getElementById("minorPosition") ? parseFloat(document.getElementById("minorPosition").value) : null
+    };
+    localStorage.setItem("threadSettings", JSON.stringify(settings));
+}
+
+function loadThreadSettings() {
+    const saved = localStorage.getItem("threadSettings");
+    if (!saved) return null;
+    try {
+        const settings = JSON.parse(saved);
+        const savedUnit = settings.unit || currentUnit;
+        const factor = savedUnit === currentUnit ? 1.0 : (savedUnit === "in" ? 25.4 : 1.0 / 25.4);
+        const standard = settings.threadStandard || "metric";
+        document.getElementById("threadStandard").value = standard;
+        if (settings.isFemale) document.getElementById("isFemale").value = settings.isFemale;
+        if (isFinite(settings.nominal)) document.getElementById("nominal").value = parseFloat((settings.nominal * factor).toFixed(7));
+        if (isFinite(settings.pitch)) {
+            const pitchFactor = standard === "unified" ? 1.0 : factor;
+            document.getElementById("pitch").value = parseFloat((settings.pitch * pitchFactor).toFixed(7));
+        }
+        if (settings.threadSeries) document.getElementById("threadSeries").value = settings.threadSeries;
+        ["pd", "major", "minor"].forEach(id => {
+            if (isFinite(settings[id])) document.getElementById(id).value = parseFloat((settings[id] * factor).toFixed(7));
+        });
+        return settings;
+    } catch(e) {
+        console.log("Error loading thread settings", e);
+        return null;
+    }
+}
+
+function restoreThreadDiameterValues(settings) {
+    if (!settings) return;
+    const savedUnit = settings.unit || currentUnit;
+    const factor = savedUnit === currentUnit ? 1.0 : (savedUnit === "in" ? 25.4 : 1.0 / 25.4);
+    ["pd", "major", "minor"].forEach(id => {
+        const element = document.getElementById(id);
+        if (element && isFinite(settings[id])) {
+            element.value = parseFloat((settings[id] * factor).toFixed(currentUnit === "in" ? 6 : 4));
+        }
+    });
 }
 
 function getTipGeometryInput() {
@@ -769,7 +985,10 @@ function updateUnits(newUnit) {
     if (newUnit !== currentUnit) {
         let factor = newUnit === "in" ? (1.0 / 25.4) : 25.4;
         
-        let inputsToConvert = ["nominal", "pd", "major", "minor", "pitch", "cutter", "tipFlat", "tipRadius"];
+        let inputsToConvert = ["nominal", "pd", "major", "minor", "cutter", "tipFlat", "tipRadius"];
+        if (document.getElementById("threadStandard").value !== "unified") {
+            inputsToConvert.push("pitch");
+        }
         inputsToConvert.forEach(id => {
             let el = document.getElementById(id);
             if (el && el.value !== "") {
@@ -782,6 +1001,8 @@ function updateUnits(newUnit) {
         
         currentUnit = newUnit;
         localStorage.setItem("displayUnit", currentUnit);
+        saveThreadSettings();
+        saveToolSettings();
     }
     
     updateUnitLabels();
@@ -794,7 +1015,9 @@ function updateUnitLabels() {
     document.getElementById("unitLabelPD").innerText = currentUnit;
     document.getElementById("unitLabelMajor").innerText = currentUnit;
     document.getElementById("unitLabelMinor").innerText = currentUnit;
-    document.getElementById("unitLabelPitch").innerText = document.getElementById("threadStandard").value === "unified" ? currentUnit + " (or 1/TPI)" : currentUnit;
+    let standard = document.getElementById("threadStandard").value;
+    document.getElementById("pitchInputLabel").innerText = standard === "unified" ? "Threads Per Inch:" : "Pitch:";
+    document.getElementById("unitLabelPitch").innerText = standard === "unified" ? "TPI" : currentUnit;
     document.getElementById("unitLabelCutter").innerText = currentUnit;
     document.getElementById("unitLabelFlat").innerText = currentUnit;
     document.getElementById("unitLabelRadius").innerText = currentUnit;
@@ -813,6 +1036,9 @@ window.onload = function() {
         currentUnit = savedUnit;
         updateUnitLabels();
     }
+    const savedThreadSettings = loadThreadSettings();
+    loadToolSettings();
+    updateTipGeometryRows();
     
     let savedDB = localStorage.getItem("threadDB");
     if (savedDB) {
@@ -828,7 +1054,22 @@ window.onload = function() {
         }
     }
     handleStandardChange(false);
+    if (savedThreadSettings && savedThreadSettings.threadClass) {
+        setClassIfAvailable(savedThreadSettings.threadClass);
+        saveThreadSettings();
+    }
     updateLimitsFromInputs(true);
+    if (savedThreadSettings) {
+        if (isFinite(savedThreadSettings.pdPosition)) setPositionControls("pd", savedThreadSettings.pdPosition);
+        const isFemale = document.getElementById("isFemale").value === "true";
+        if (!isFemale && isFinite(savedThreadSettings.majorPosition) && document.getElementById("majorPosition")) {
+            setPositionControls("major", savedThreadSettings.majorPosition);
+        }
+        if (isFemale && isFinite(savedThreadSettings.minorPosition) && document.getElementById("minorPosition")) {
+            setPositionControls("minor", savedThreadSettings.minorPosition);
+        }
+        restoreThreadDiameterValues(savedThreadSettings);
+    }
 }
 
 function calculate() {
@@ -838,11 +1079,12 @@ function calculate() {
     let major = parseFloat(document.getElementById('major').value);
     let minor = parseFloat(document.getElementById('minor').value);
     let nominal = parseFloat(document.getElementById('nominal').value);
-    let pitch = parseFloat(document.getElementById('pitch').value);
+    let pitch = getDisplayPitchFromInput();
     let cutter = parseFloat(document.getElementById('cutter').value);
     let threadAngle = 60.0;
     let tipGeometry = getTipGeometryInput();
     let isRoundedTip = tipGeometry.type === "rounded";
+    if (pitch === null) return;
     
     let res = solveThreadMillOffset(isFemale, pd, major, minor, cutter, pitch, threadAngle, tipGeometry);
     
@@ -880,21 +1122,17 @@ function calculate() {
         document.getElementById('res_cut').innerText = res.resulting_minor.toFixed(dec);
         document.getElementById('res_diff').innerText = (diff > 0 ? "+" : "") + diff.toFixed(dec) + " " + currentUnit;
         
-        if (window.currentLimits && window.currentLimits.minor_min !== null && window.currentLimits.minor_max !== null) {
-            let limitMin = engineToDisplay(window.currentLimits.minor_min);
-            let limitMax = (!isRoundedTip && window.currentLimits.minor_max_flat) ? engineToDisplay(window.currentLimits.minor_max_flat) : engineToDisplay(window.currentLimits.minor_max);
-            let radiusOk = true;
-            if (isRoundedTip && window.currentLimits.root_radius_min !== undefined) {
-                radiusOk = tipGeometry.tipRadius >= engineToDisplay(window.currentLimits.root_radius_min);
-            }
-            let isUnified = document.getElementById("threadStandard").value === "unified";
-            let isUNR = isUnified && document.getElementById("threadSeries").value === "UNR";
-            if (isUNR && !isRoundedTip) radiusOk = false;
-            
-            if (res.resulting_minor >= limitMin && res.resulting_minor <= limitMax && radiusOk) {
+        if (window.currentLimits) {
+            const envelope = getExternalMinorEnvelope(window.currentLimits, tipGeometry);
+            const limitMin = envelope.min === null || envelope.min === undefined || !isFinite(envelope.min) ? -Infinity : engineToDisplay(envelope.min);
+            const limitMax = envelope.max === null || envelope.max === undefined || !isFinite(envelope.max) ? Infinity : engineToDisplay(envelope.max);
+            const inMinorRange = res.resulting_minor >= limitMin && res.resulting_minor <= limitMax;
+
+            if (inMinorRange && envelope.radiusOk) {
                 document.getElementById('res_diff').innerHTML += ' <span style="color:green; margin-left:10px;">[IN SPEC]</span>';
             } else {
-                document.getElementById('res_diff').innerHTML += ' <span style="color:red; font-weight:bold; margin-left:10px;">[OUT OF SPEC]</span>';
+                const detail = envelope.messages.length ? " (" + envelope.messages.join(", ") + ")" : "";
+                document.getElementById('res_diff').innerHTML += ' <span style="color:red; font-weight:bold; margin-left:10px;">[OUT OF SPEC]</span>' + detail;
             }
         }
     }
@@ -959,13 +1197,12 @@ function drawProfiles(Rc_opt, Rc_initial, isFemale, pd, major, minor, nominal, c
                 lines.push({rad: engineToDisplay(window.currentLimits.major_max) / 2, name: "Major Max", color: "blue", dash: [2, 2], pos: "top"});
             }
         } else {
-            if (window.currentLimits.minor_min !== null) {
-                lines.push({rad: engineToDisplay(window.currentLimits.minor_min) / 2, name: "Minor Min", color: "blue", dash: [2, 2], pos: "top"});
+            const envelope = getExternalMinorEnvelope(window.currentLimits, tipGeometry);
+            if (envelope.min !== null && envelope.min !== undefined && isFinite(envelope.min)) {
+                lines.push({rad: engineToDisplay(envelope.min) / 2, name: envelope.minLabel, color: "blue", dash: [2, 2], pos: "top"});
             }
-            if (cutterProfile.type !== "rounded" && window.currentLimits.minor_max_flat) {
-                lines.push({rad: engineToDisplay(window.currentLimits.minor_max_flat) / 2, name: "Minor Max (flat)", color: "blue", dash: [2, 2], pos: "top"});
-            } else if (window.currentLimits.minor_max !== null) {
-                lines.push({rad: engineToDisplay(window.currentLimits.minor_max) / 2, name: "Minor Max", color: "blue", dash: [2, 2], pos: "top"});
+            if (envelope.max !== null && envelope.max !== undefined && isFinite(envelope.max)) {
+                lines.push({rad: engineToDisplay(envelope.max) / 2, name: envelope.maxLabel, color: "blue", dash: [2, 2], pos: "top"});
             }
         }
     }
