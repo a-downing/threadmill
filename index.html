@@ -459,21 +459,7 @@ function roundTo(value, places) {
     return Math.round(scaled) / factor;
 }
 
-function calculateUnifiedExternalRoundedMinorDiameter(pitchDiameter, tpi, rootRadius) {
-    if (!Number.isFinite(pitchDiameter) || !Number.isFinite(tpi) || !Number.isFinite(rootRadius)) {
-        throw new Error("pitchDiameter, tpi, and rootRadius must be finite numbers");
-    }
-    if (tpi <= 0) {
-        throw new Error("tpi must be greater than zero");
-    }
-    if (rootRadius < 0) {
-        throw new Error("rootRadius must be greater than or equal to zero");
-    }
 
-    const P = 1.0 / tpi;
-    const H = Math.sqrt(3.0) / 2.0 * P;
-    return pitchDiameter - (7.0 / 8.0) * H + 2.0 * rootRadius;
-}
 
 /**
  * Calculates the ASME B1.1 limits of size for Unified Inch Screw Threads.
@@ -549,7 +535,8 @@ function getUnifiedThreadLimits(nominal_d, tpi, tclass, series) {
         // Minor diameter UNR max limit
         const root_radius_min = 0.10825318 * P;
         const root_radius_basic = 0.14433757 * P;
-        const max_minor = calculateUnifiedExternalRoundedMinorDiameter(max_pitch, tpi, root_radius_min);
+        const H = Math.sqrt(3.0) / 2.0 * P;
+        const max_minor = max_pitch - (7.0 / 8.0) * H + 2.0 * root_radius_min;
 
         const roundedLimits = {
             major_max: roundTo(max_major, 4),
@@ -645,8 +632,7 @@ function getUnifiedThreadLimits(nominal_d, tpi, tclass, series) {
 // Export for use in Node.js
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
-        getUnifiedThreadLimits,
-        calculateUnifiedExternalRoundedMinorDiameter
+        getUnifiedThreadLimits
     };
 }
 
