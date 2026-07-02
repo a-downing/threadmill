@@ -22,6 +22,11 @@
         .result-box { width: 100%; min-width: 0; margin-top: 20px; padding: 10px; background: #f9f9f9; border: 1px solid #ddd; }
         .result-row { display: flex; align-items: baseline; gap: 4px; margin-bottom: 5px; white-space: normal; }
         .result-label { flex: 0 1 340px; min-width: 220px; font-weight: bold; }
+        .result-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+        .result-table th, .result-table td { border: 1px solid #ddd; padding: 5px 7px; text-align: right; }
+        .result-table th:first-child, .result-table td:first-child { text-align: left; }
+        .result-table th { background: #eee; }
+        .warning-box { margin: 0 0 10px 0; padding: 10px; border: 2px solid #b00020; background: #fff0f0; color: #7a0015; font-weight: bold; }
         hr { margin: 15px 0; }
         .unit { margin-left: 5px; color: #555; }
         .limit-text { font-size:0.85em; color:#666; line-height: 1.25; }
@@ -186,10 +191,36 @@
     <button onclick="calculate()">Calculate Correction</button>
     
     <div class="result-box" id="results" style="display:none;">
+        <div id="fitWarning" class="warning-box" style="display:none;"></div>
         <div class="result-row"><span class="result-label">Fusion Automatic Pitch Diameter Offset:</span><span id="res_fusion_pdo"></span> <span class="res_unit">mm</span></div>
         <div class="result-row"><span class="result-label">Adjusted Pitch Diameter Offset:</span><span id="res_pdo"></span> <span class="res_unit">mm</span></div>
-        <div class="result-row"><span class="result-label" id="res_cut_label">Resulting Major Diameter:</span><span id="res_cut"></span> <span class="res_unit">mm</span> (<span id="res_diff" style="font-weight:bold;"></span> from target)</div>
-        <div class="result-row"><span class="result-label" id="res_stock_label">Hole Diameter:</span><span id="res_stock"></span> <span class="res_unit">mm</span></div>
+        <table class="result-table">
+            <thead>
+                <tr>
+                    <th>Toolpath</th>
+                    <th>Resulting Minor Diameter</th>
+                    <th>Resulting Pitch Diameter</th>
+                    <th>Resulting Major Diameter</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Fusion Automatic</td>
+                    <td id="res_fusion_minor"></td>
+                    <td id="res_fusion_pitch"></td>
+                    <td id="res_fusion_major"></td>
+                    <td id="res_fusion_status"></td>
+                </tr>
+                <tr>
+                    <td>Adjusted</td>
+                    <td id="res_adjusted_minor"></td>
+                    <td id="res_adjusted_pitch"></td>
+                    <td id="res_adjusted_major"></td>
+                    <td id="res_adjusted_status"></td>
+                </tr>
+            </tbody>
+        </table>
     </div>
 </div>
 
@@ -624,7 +655,7 @@ function getUnifiedThreadLimits(nominal_d, tpi, tclass, series) {
             pitch_min: roundTo(min_pitch, 4),
             pitch_max: roundTo(max_pitch, 4),
             major_min: roundTo(min_major, 4),
-            major_max: roundTo(max_major, 4)
+            major_max: null
         };
     }
 }
@@ -1069,6 +1100,11 @@ function formatLen(val) {
     return val.toFixed(currentUnit === "in" ? 5 : 4);
 }
 
+function formatDisplayLimit(val) {
+    if (val === null || val === undefined || !isFinite(val)) return "None";
+    return formatLen(val);
+}
+
 function getClassCandidates() {
     let standard = document.getElementById("threadStandard").value;
     let isFemale = document.getElementById("isFemale").value === "true";
@@ -1266,8 +1302,8 @@ function getExternalMinorEnvelope(limits, tipGeometry) {
 }
 
 function formatLimitRange(min, max, minLabel = "Min", maxLabel = "Max") {
-    const minText = min === null || min === undefined || !isFinite(min) ? "N/A" : formatLen(engineToDisplay(min));
-    const maxText = max === null || max === undefined || !isFinite(max) ? "N/A" : formatLen(engineToDisplay(max));
+    const minText = min === null || min === undefined || !isFinite(min) ? "None" : formatLen(engineToDisplay(min));
+    const maxText = max === null || max === undefined || !isFinite(max) ? "None" : formatLen(engineToDisplay(max));
     return `[${minLabel}: ${minText}, ${maxLabel}: ${maxText}]`;
 }
 
@@ -1344,7 +1380,7 @@ function updateLimitsFromInputs(applySliders) {
     document.getElementById("classStatus").innerText = "";
 
     let majorMin = engineToDisplay(limits.major_min);
-    let majorMax = engineToDisplay(limits.major_max);
+    let majorMax = limits.major_max !== null && limits.major_max !== undefined ? engineToDisplay(limits.major_max) : null;
     let pitchMin = engineToDisplay(limits.pitch_min);
     let pitchMax = engineToDisplay(limits.pitch_max);
     let tipGeometry = getTipGeometryInput();
@@ -1354,10 +1390,10 @@ function updateLimitsFromInputs(applySliders) {
         ? engineToDisplay(limits.minor_max)
         : (minorEnvelope && minorEnvelope.max !== null && minorEnvelope.max !== undefined ? engineToDisplay(minorEnvelope.max) : null);
 
-    document.getElementById("majorLimits").innerText = `[Min: ${formatLen(majorMin)}, Max: ${formatLen(majorMax)}]`;
-    document.getElementById("pdLimits").innerText = `[Min: ${formatLen(pitchMin)}, Max: ${formatLen(pitchMax)}]`;
+    document.getElementById("majorLimits").innerText = `[Min: ${formatDisplayLimit(majorMin)}, Max: ${formatDisplayLimit(majorMax)}]`;
+    document.getElementById("pdLimits").innerText = `[Min: ${formatDisplayLimit(pitchMin)}, Max: ${formatDisplayLimit(pitchMax)}]`;
     let minorText = isFemale
-        ? `[Min: ${formatLen(minorMin)}, Max: ${formatLen(minorMax)}]`
+        ? `[Min: ${formatDisplayLimit(minorMin)}, Max: ${formatDisplayLimit(minorMax)}]`
         : formatLimitRange(minorEnvelope.min, minorEnvelope.max, minorEnvelope.minLabel, minorEnvelope.maxLabel);
     if (!isFemale && limits.root_radius_min !== undefined) {
         minorText += `<span class="limit-extra">Root R min: ${formatLen(engineToDisplay(limits.root_radius_min))}`;
@@ -1632,45 +1668,79 @@ function calculate() {
     
     document.getElementById('res_fusion_pdo').innerText = res.fusion_auto_pdo.toFixed(dec);
     document.getElementById('res_pdo').innerText = res.pdo.toFixed(dec);
-    document.getElementById('res_stock_label').innerText = isFemale ? "Hole Diameter:" : "Boss Diameter:";
-    document.getElementById('res_stock').innerText = (isFemale ? minor : major).toFixed(dec);
-    
-    if (isFemale) {
-        let diff = res.resulting_major - major;
-        document.getElementById('res_cut_label').innerText = "Resulting Major Diameter:";
-        document.getElementById('res_cut').innerText = res.resulting_major.toFixed(dec);
-        document.getElementById('res_diff').innerText = (diff > 0 ? "+" : "") + diff.toFixed(dec) + " " + currentUnit;
-        
-        if (window.currentLimits) {
-            let limitMin = engineToDisplay(window.currentLimits.major_min);
-            let limitMax = window.currentLimits.major_max !== null ? engineToDisplay(window.currentLimits.major_max) : Infinity;
-            
-            if (res.resulting_major >= limitMin && res.resulting_major <= limitMax) {
-                document.getElementById('res_diff').innerHTML += ' <span style="color:green; margin-left:10px;">[IN SPEC]</span>';
-            } else {
-                document.getElementById('res_diff').innerHTML += ' <span style="color:red; font-weight:bold; margin-left:10px;">[OUT OF SPEC]</span>';
-            }
-        }
+    const fitWarning = document.getElementById('fitWarning');
+    if (isFemale && isFinite(cutter) && isFinite(minor) && cutter > minor) {
+        fitWarning.style.display = 'block';
+        fitWarning.innerText = `WARNING: Cutter diameter ${cutter.toFixed(dec)} ${currentUnit} is not smaller than the hole/minor diameter ${minor.toFixed(dec)} ${currentUnit}. The tool will not physically fit in the hole before cutting.`;
     } else {
-        let diff = res.resulting_minor - minor;
-        document.getElementById('res_cut_label').innerText = "Resulting Minor Diameter:";
-        document.getElementById('res_cut').innerText = res.resulting_minor.toFixed(dec);
-        document.getElementById('res_diff').innerText = (diff > 0 ? "+" : "") + diff.toFixed(dec) + " " + currentUnit;
-        
-        if (window.currentLimits) {
-            const envelope = getExternalMinorEnvelope(window.currentLimits, tipGeometry);
-            const limitMin = envelope.min === null || envelope.min === undefined || !isFinite(envelope.min) ? -Infinity : engineToDisplay(envelope.min);
-            const limitMax = envelope.max === null || envelope.max === undefined || !isFinite(envelope.max) ? Infinity : engineToDisplay(envelope.max);
-            const inMinorRange = res.resulting_minor >= limitMin && res.resulting_minor <= limitMax;
-
-            if (inMinorRange && envelope.radiusOk) {
-                document.getElementById('res_diff').innerHTML += ' <span style="color:green; margin-left:10px;">[IN SPEC]</span>';
-            } else {
-                const detail = envelope.messages.length ? " (" + envelope.messages.join(", ") + ")" : "";
-                document.getElementById('res_diff').innerHTML += ' <span style="color:red; font-weight:bold; margin-left:10px;">[OUT OF SPEC]</span>' + detail;
-            }
-        }
+        fitWarning.style.display = 'none';
+        fitWarning.innerText = '';
     }
+
+    const fusionDiameters = {
+        minor: isFemale ? minor : (2 * res.Rc_initial - cutter),
+        pitch: isFemale ? (pd + res.diametral_compensation) : (pd - res.diametral_compensation),
+        major: isFemale ? (2 * res.Rc_initial + cutter) : major
+    };
+    const adjustedDiameters = {
+        minor: isFemale ? minor : res.resulting_minor,
+        pitch: pd,
+        major: isFemale ? res.resulting_major : major
+    };
+
+    function formatResultDiameter(value) {
+        return value.toFixed(dec) + " " + currentUnit;
+    }
+
+    function rangeIncludes(value, min, max) {
+        const lo = min === null || min === undefined || !isFinite(min) ? -Infinity : min;
+        const hi = max === null || max === undefined || !isFinite(max) ? Infinity : max;
+        return value >= lo && value <= hi;
+    }
+
+    function resultStatus(diameters) {
+        if (!window.currentLimits) return "";
+
+        const pitchMin = engineToDisplay(window.currentLimits.pitch_min);
+        const pitchMax = engineToDisplay(window.currentLimits.pitch_max);
+        const majorMin = engineToDisplay(window.currentLimits.major_min);
+        const majorMax = window.currentLimits.major_max === null || window.currentLimits.major_max === undefined
+            ? Infinity
+            : engineToDisplay(window.currentLimits.major_max);
+        let minorMin;
+        let minorMax;
+        let radiusOk = true;
+        let messages = [];
+
+        if (isFemale) {
+            minorMin = engineToDisplay(window.currentLimits.minor_min);
+            minorMax = engineToDisplay(window.currentLimits.minor_max);
+        } else {
+            const envelope = getExternalMinorEnvelope(window.currentLimits, tipGeometry);
+            minorMin = envelope.min === null || envelope.min === undefined || !isFinite(envelope.min) ? -Infinity : engineToDisplay(envelope.min);
+            minorMax = envelope.max === null || envelope.max === undefined || !isFinite(envelope.max) ? Infinity : engineToDisplay(envelope.max);
+            radiusOk = envelope.radiusOk;
+            messages = envelope.messages;
+        }
+
+        const inSpec = rangeIncludes(diameters.minor, minorMin, minorMax)
+            && rangeIncludes(diameters.pitch, pitchMin, pitchMax)
+            && rangeIncludes(diameters.major, majorMin, majorMax)
+            && radiusOk;
+
+        if (inSpec) return '<span style="color:green; font-weight:bold;">In spec</span>';
+        const detail = messages.length ? " (" + messages.join(", ") + ")" : "";
+        return '<span style="color:red; font-weight:bold;">Out of spec</span>' + detail;
+    }
+
+    document.getElementById('res_fusion_minor').innerText = formatResultDiameter(fusionDiameters.minor);
+    document.getElementById('res_fusion_pitch').innerText = formatResultDiameter(fusionDiameters.pitch);
+    document.getElementById('res_fusion_major').innerText = formatResultDiameter(fusionDiameters.major);
+    document.getElementById('res_fusion_status').innerHTML = resultStatus(fusionDiameters);
+    document.getElementById('res_adjusted_minor').innerText = formatResultDiameter(adjustedDiameters.minor);
+    document.getElementById('res_adjusted_pitch').innerText = formatResultDiameter(adjustedDiameters.pitch);
+    document.getElementById('res_adjusted_major').innerText = formatResultDiameter(adjustedDiameters.major);
+    document.getElementById('res_adjusted_status').innerHTML = resultStatus(adjustedDiameters);
     
     document.getElementById("canvasContainer").style.display = 'block';
     
